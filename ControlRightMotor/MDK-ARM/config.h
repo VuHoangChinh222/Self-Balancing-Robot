@@ -1,0 +1,30 @@
+#ifndef BALANCE_CONFIG_H
+#define BALANCE_CONFIG_H
+
+#define MAX_SPEED 1000
+#define MAX_TURN_RATE 0.5f
+#define JOYSTICK_SCALE 0.001f
+#define SAMPLING_TIME 0.005f // 5ms
+#define ANGLE_TOLERANCE 1.0f
+#define BALANCE_TARGET_ANGLE 0.0f
+#define HALL_STEPS_PER_REVOLUTION 45.0f
+#define DEGREES_PER_REVOLUTION 360.0f
+
+// PID Parameters
+#define PID_POSITION_KP 0.08f
+#define PID_POSITION_KI 0.0f 
+#define PID_POSITION_KD 0.0f
+
+#define PID_PITCH_KP 0.23f
+#define PID_PITCH_KI 0.1f
+#define PID_PITCH_KD 0.09f
+
+#define PID_SPEED_KP 0.15f
+#define PID_SPEED_KI 0.01f
+#define PID_SPEED_KD 0.05f
+
+#define PID_STARTUP_KP 0.6f
+#define PID_STARTUP_KI 0.02f
+#define PID_STARTUP_KD 1.2f
+
+#endif

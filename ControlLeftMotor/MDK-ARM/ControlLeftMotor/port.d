@@ -1,0 +1,12 @@
+controlleftmotor\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3/port.c
+controlleftmotor\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h
+controlleftmotor\port.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+controlleftmotor\port.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+controlleftmotor\port.o: ../Core/Inc/FreeRTOSConfig.h
+controlleftmotor\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/projdefs.h
+controlleftmotor\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/portable.h
+controlleftmotor\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/deprecated_definitions.h
+controlleftmotor\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3/portmacro.h
+controlleftmotor\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h
+controlleftmotor\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h
+controlleftmotor\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h

@@ -1,0 +1,12 @@
+xecanbang\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3/port.c
+xecanbang\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h
+xecanbang\port.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+xecanbang\port.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+xecanbang\port.o: ../Core/Inc/FreeRTOSConfig.h
+xecanbang\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/projdefs.h
+xecanbang\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/portable.h
+xecanbang\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/deprecated_definitions.h
+xecanbang\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3/portmacro.h
+xecanbang\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h
+xecanbang\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h
+xecanbang\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h
