@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2025 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -50,37 +50,67 @@ TIM_HandleTypeDef htim1;
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+    .name = "defaultTask",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityNormal,
 };
 /* Definitions for TaskReceiveCAN */
 osThreadId_t TaskReceiveCANHandle;
 const osThreadAttr_t TaskReceiveCAN_attributes = {
-  .name = "TaskReceiveCAN",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityRealtime,
+    .name = "TaskReceiveCAN",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityRealtime,
 };
 /* Definitions for TaskMControl */
 osThreadId_t TaskMControlHandle;
 const osThreadAttr_t TaskMControl_attributes = {
-  .name = "TaskMControl",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+    .name = "TaskMControl",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityNormal,
 };
 /* Definitions for TaskReadHall */
 osThreadId_t TaskReadHallHandle;
 const osThreadAttr_t TaskReadHall_attributes = {
-  .name = "TaskReadHall",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityRealtime,
+    .name = "TaskReadHall",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityRealtime,
 };
 /* USER CODE BEGIN PV */
-PID_t PID_Position, PID_Pitch,PID_SpeedLeft;
+
+// Bien cho truong hop tôi gioi han can bang
+typedef enum
+{
+  NORMAL_OPERATION,
+  SAFETY_STOP,
+  WAITING_RECOVERY,
+  RECOVERY_IN_PROGRESS
+} RobotState;
+
+typedef struct
+{
+  RobotState state;
+  uint32_t stopTime;
+  uint32_t recoveryStartTime;
+  int32_t lastEncoderPosition;
+  uint8_t recoveryAttempts;
+  float lastStableAngle;
+} BalanceStatus;
+
+BalanceStatus robotStatus = {
+    .state = NORMAL_OPERATION,
+    .stopTime = 0,
+    .recoveryStartTime = 0,
+    .lastEncoderPosition = 0,
+    .recoveryAttempts = 0,
+    .lastStableAngle = 0};
+volatile uint32_t stuckTimer = 0;
+//------------------------------------
+
+PID_t PID_Position, PID_Pitch, PID_SpeedLeft;
 
 #define MAX_SPEED 1000
-#define MAX_TURN_RATE 0.5f  // He so quay toi da
-#define JOYSTICK_SCALE 0.01f  // Scale [-100,100] -> [-10,10]
+#define MAX_TURN_RATE 0.5f   // He so quay toi da
+#define JOYSTICK_SCALE 0.01f // Scale [-100,100] -> [-10,10]
 // Them PID tam thoi cho khoi dong
 PID_t PID_Startup;
 uint8_t isBalanced = 0; // Co kiem tra do can bang
@@ -103,7 +133,7 @@ float anglemotor = 0;
 
 // CAN
 uint8_t RxData[4] = {0};
-volatile int32_t joyStickX=0,joyStickY=0;
+volatile int32_t joyStickX = 0, joyStickY = 0;
 CAN_RxHeaderTypeDef RxHeader;
 volatile char *command = "";
 volatile int16_t angleY = 0;
@@ -139,6 +169,7 @@ uint8_t readHallStateDebounced(void);
 // H?m nh?n t?n hi?u CAN v? x? l? CAN
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
 float getMotorSpeed(void);
+void PID_Reset(PID_t *pid);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -147,9 +178,9 @@ float getMotorSpeed(void);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
 
@@ -178,25 +209,31 @@ int main(void)
   MX_CAN_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-	PID_Position.Kp = 0.08;PID_Position.Ki = 0.0;PID_Position.Kd = 0.0;
-	PID_Pitch.Kp = 0.23;PID_Pitch.Ki = 0.1;PID_Pitch.Kd = 0.09;
-	PID_SpeedLeft.Kp=0.15;PID_SpeedLeft.Ki=0.01;PID_SpeedLeft.Kd=0.05;
-	// PID cho giai do?n kh?i d?ng (tham s? m?m hon)
-	PID_Startup.Kp = 0.6; // Gi?m Kp d? tr?nh dao d?ng
-	PID_Startup.Ki = 0.02;
-	PID_Startup.Kd = 1.2; // Tang Kd d? gi?m overshoot
-	PID_Startup.integral = 0;
-	PID_Startup.prevError = 0;
-	// B?t y?u c?u ng?t khi d? li?u CAN nh?n v? du?c luu tr? g?i tin ? FIFO1 khi d?ng ID
-	if (HAL_CAN_Start(&hcan) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
-	// Enable CAN RX interrupt
-	HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5, 0);
-	HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  PID_Position.Kp = 0.08;
+  PID_Position.Ki = 0.0;
+  PID_Position.Kd = 0.0;
+  PID_Pitch.Kp = 0.6;
+  PID_Pitch.Ki = 0.1;
+  PID_Pitch.Kd = 0.09;
+  PID_SpeedLeft.Kp = 0.15;
+  PID_SpeedLeft.Ki = 0.01;
+  PID_SpeedLeft.Kd = 0.05;
+  // PID cho giai do?n kh?i d?ng (tham s? m?m hon)
+  PID_Startup.Kp = 0.6; // Gi?m Kp d? tr?nh dao d?ng
+  PID_Startup.Ki = 0.02;
+  PID_Startup.Kd = 1.2; // Tang Kd d? gi?m overshoot
+  PID_Startup.integral = 0;
+  PID_Startup.prevError = 0;
+  // B?t y?u c?u ng?t khi d? li?u CAN nh?n v? du?c luu tr? g?i tin ? FIFO1 khi d?ng ID
+  if (HAL_CAN_Start(&hcan) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+  // Enable CAN RX interrupt
+  HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -256,17 +293,17 @@ int main(void)
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
@@ -280,9 +317,8 @@ void SystemClock_Config(void)
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+   */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
@@ -295,10 +331,10 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief CAN Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief CAN Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_CAN_Init(void)
 {
 
@@ -343,14 +379,13 @@ static void MX_CAN_Init(void)
   HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
   /* USER CODE END CAN_Init 2 */
-
 }
 
 /**
-  * @brief TIM1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief TIM1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_TIM1_Init(void)
 {
 
@@ -367,9 +402,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 7200-1;
+  htim1.Init.Prescaler = 7200 - 1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 1000-1;
+  htim1.Init.Period = 1000 - 1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -418,19 +453,18 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
-
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
+  /* USER CODE BEGIN MX_GPIO_Init_1 */
+  /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -452,7 +486,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : HALL_U_Pin HALL_V_Pin */
-  GPIO_InitStruct.Pin = HALL_U_Pin|HALL_V_Pin;
+  GPIO_InitStruct.Pin = HALL_U_Pin | HALL_V_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -470,39 +504,43 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(DIR_GPIO_Port, &GPIO_InitStruct);
 
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
+  /* USER CODE BEGIN MX_GPIO_Init_2 */
+  /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-	int16_t raw_angle=0;
-	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK) {
-		switch (RxHeader.StdId) {
-				case 0x446: // Receive angle data
-						// Gh�p 2 byte th�nh s? 16-bit
-						raw_angle = ((int16_t)RxData[2] << 8) | RxData[3];
-						// Chuy?n d?i v� �p d?ng d?u
-						angleY = (RxData[1] ? 1 : -1) * raw_angle;
-					break;
-				case 0x447: // Receive X and partial Y
-						// Store X data
-						joyStickX=RxData[0]?((RxData[1]<<8)|RxData[2]):-((RxData[1]<<8)|RxData[2]);
-						// Store first part of Y
-						joyStickY = RxData[3]?1:-1; // Y sign
-					break;
-				case 0x448: // Receive remaining Y data
-						// Store remaining Y data
-						joyStickY*=(RxData[0]<<8)|RxData[1];
-					break;	
-				default:
-						Error_Handler();
-					break;
-			}
-    } else {
-        Error_Handler();
+  int16_t raw_angle = 0;
+  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
+  {
+    switch (RxHeader.StdId)
+    {
+    case 0x446: // Receive angle data
+      // Gh�p 2 byte th�nh s? 16-bit
+      raw_angle = ((int16_t)RxData[2] << 8) | RxData[3];
+      // Chuy?n d?i v� �p d?ng d?u
+      angleY = (RxData[1] ? 1 : -1) * raw_angle;
+      break;
+    case 0x447: // Receive X and partial Y
+      // Store X data
+      joyStickX = RxData[0] ? ((RxData[1] << 8) | RxData[2]) : -((RxData[1] << 8) | RxData[2]);
+      // Store first part of Y
+      joyStickY = RxData[3] ? 1 : -1; // Y sign
+      break;
+    case 0x448: // Receive remaining Y data
+      // Store remaining Y data
+      joyStickY *= (RxData[0] << 8) | RxData[1];
+      break;
+    default:
+      Error_Handler();
+      break;
     }
+  }
+  else
+  {
+    Error_Handler();
+  }
 }
 
 void updateMotors(float PWM)
@@ -548,12 +586,93 @@ void AutoBalanceOnStartup()
   }
 }
 
+float getMotorSpeed(void)
+{
+  static int32_t lastHallCounter = 0;
+  static uint32_t lastTick = 0;
+  uint32_t now = HAL_GetTick();
+  int32_t deltaHall = hallCounter - lastHallCounter;
+  uint32_t deltaTime = now - lastTick; // ms
+
+  float speed = 0.0f;
+  if (deltaTime > 0)
+  {
+    // Số vòng quay mỗi giây (rps): (deltaHall/45) vòng trong deltaTime ms
+    speed = ((float)deltaHall / 45.0f) * (1000.0f / (float)deltaTime); // vòng/giây
+  }
+
+  lastHallCounter = hallCounter;
+  lastTick = now;
+  return speed;
+}
+
+void PID_Reset(PID_t *pid)
+{
+  pid->integral = 0;
+  pid->prevError = 0;
+  pid->prevMeasurement = 0;
+}
+
 void checkSafetyStop(int16_t Y)
 {
-  if (fabs((float)Y) > 40.0 || !isBalanced)
+  /* if (fabs((float)Y) > 40.0 || !isBalanced)
+    {
+      updateMotors(0);
+      isBalanced = 0; // Reset tr?ng th?i c?n b?ng
+    }*/
+  float currentAngle = (float)angleY;
+  uint32_t currentTime = HAL_GetTick();
+
+  switch (robotStatus.state)
   {
-    updateMotors(0);
-    isBalanced = 0; // Reset tr?ng th?i c?n b?ng
+  case NORMAL_OPERATION:
+    if (fabs(currentAngle) > 35)
+    {
+      robotStatus.state = SAFETY_STOP;
+      robotStatus.stopTime = currentTime;
+      updateMotors(0);
+      robotStatus.lastStableAngle = currentAngle;
+    }
+    break;
+
+  case SAFETY_STOP:
+    if (currentTime - robotStatus.stopTime >= 500)
+    {
+      if (robotStatus.recoveryAttempts < 3)
+      {
+        robotStatus.state = RECOVERY_IN_PROGRESS;
+        robotStatus.recoveryStartTime = currentTime;
+        robotStatus.recoveryAttempts++;
+        robotStatus.lastEncoderPosition = hallCounter;
+      }
+    }
+    break;
+
+  case RECOVERY_IN_PROGRESS:
+    if (fabs(currentAngle) < 2)
+    {
+      robotStatus.state = NORMAL_OPERATION;
+      robotStatus.recoveryAttempts = 0;
+      isBalanced = 1;
+      homePosition = getMotorAngle();
+      // Reset các PID khi phục hồi thành công
+      PID_Reset(&PID_Pitch);
+      PID_Reset(&PID_SpeedLeft);
+      PID_Reset(&PID_Position);
+    }
+    else if (currentTime - robotStatus.recoveryStartTime > 50 &&
+             robotStatus.lastEncoderPosition == hallCounter)
+    {
+      // Phát hiện kẹt - tăng mô-men
+      float recoveryPWM = -0.7 * currentAngle;
+      updateMotors(recoveryPWM);
+      stuckTimer = currentTime;
+    }
+    break;
+
+  default:
+    robotStatus.state = SAFETY_STOP;
+    break;
   }
 }
 
@@ -602,99 +721,77 @@ float getMotorAngle(void)
 
 void controlLoop(void)
 {
- // Th?m bi?n d? theo d?i joystick
-//  static float targetPosition = 0;
   static float speedLeft = 0;
-	// Scale joystick inputs to [-1,1]
-  float forwardInput = joyStickY * JOYSTICK_SCALE;  // Forward/Backward
-  float turnInput = -joyStickX * JOYSTICK_SCALE;     // Left/Right turn
-	if (fabs(forwardInput) > 0.1f || fabs(turnInput) > 0.1f) {
-		// T?nh to?n t?c d? m?c ti?u cho m?i b?nh
-		float targetSpeedLeft = forwardInput;
-		
-		// Th?m hi?u ?ng quay
-		targetSpeedLeft += turnInput * MAX_TURN_RATE;
-		
-		// Gi?i h?n t?c d?
-		targetSpeedLeft = fminf(fmaxf(targetSpeedLeft, -1.0f), 1.0f);
+  float currentAngle = (float)angleY;
 
-		
-		// PID cho t?c d?
-		float speedLeftOutput = PID_Compute(&PID_SpeedLeft, targetSpeedLeft, speedLeft, dt);
-		
-		// PID cho c?n b?ng
-		float balanceTorque = PID_Compute(&PID_Pitch, 0.0f, angleY, dt);
-		
-		// K?t h?p c?c output
-		float pwmLeft = balanceTorque + speedLeftOutput * MAX_SPEED;
-		
-		// C?p nh?t d?ng co
-		updateMotors(pwmLeft);
-		// C?p nh?t t?c d? hi?n t?i (t? encoder ho?c hall sensor)
-		speedLeft = getMotorSpeed();
-  }else {
-		// Ch? d? gi? c?n b?ng t?i ch?
-		float positionError = homePosition - positionOffset;
-		float balanceTorque = PID_Compute(&PID_Pitch, 0.0f, angleY, dt);
-		float stabilizeTorque = PID_Compute(&PID_Position, 0.0f, positionError, dt);
-		
-		float pwm = balanceTorque + stabilizeTorque;
-		updateMotors(pwm);
-	}  
-  checkSafetyStop(angleY);
-	
-	
-/*  // N?u c? t?n hi?u t? joystick
-  if (joyStickX != 0 || joyStickY != 0) {
-    // T?nh to?n v? tr? m?i d?a tr?n joystick
-    float xInput = joyStickX * 0.1f; // H? s? scale cho ph? h?p
-    float yInput = joyStickY * 0.1f;
-    
-    // C?p nh?t v? tr? m?c ti?u
-    targetPosition += xInput;
-    
-    // PID cho c?n b?ng (angleY)
-    float balanceTorque = PID_Compute(&PID_Pitch, 0.0f, angleY , dt);
-    // ?i?u khi?n d?ng co
-    float PWM = balanceTorque + xInput;
-    updateMotors(PWM);
-  }
-  else {
-    // Ch? d? gi? v? tr? ban d?u
-    float positionError = homePosition - positionOffset;
-    float velocitySetpoint = PID_Compute(&PID_Position, 0.0f, positionError, dt);
-    float balanceTorque = PID_Compute(&PID_Pitch, 0.0f, angleY, dt);
-    
-    float PWM = balanceTorque + velocitySetpoint;
-    updateMotors(PWM);
-  }
-  
-  checkSafetyStop(angleY);
-*/
-}
+  // Chỉ xử lý điều khiển khi ở trạng thái bình thường hoặc đang phục hồi
+  if (robotStatus.state == NORMAL_OPERATION ||
+      robotStatus.state == RECOVERY_IN_PROGRESS)
+  {
 
-// Th?m h?m d?c t?c d? d?ng co
-float getMotorSpeed(void) {
-    // T?nh t?c d? t? encoder ho?c hall sensor cho d?ng co tr?i
-    static int32_t lastCountLeft = 0;
-    float speed = (hallCounter- lastCountLeft) / dt;
-    lastCountLeft = hallCounter;
-    return speed / MAX_SPEED; // Normalize to [-1,1]
+    float forwardInput = joyStickY * JOYSTICK_SCALE;
+    float turnInput = -joyStickX * JOYSTICK_SCALE;
+
+    if (robotStatus.state == RECOVERY_IN_PROGRESS)
+    {
+      // Giảm độ nhạy điều khiển trong quá trình phục hồi
+      forwardInput *= 0.5f;
+      turnInput *= 0.5f;
+    }
+
+    if (fabs(forwardInput) > 0.1f || fabs(turnInput) > 0.1f)
+    {
+      float targetSpeedLeft = forwardInput;
+      targetSpeedLeft += turnInput * MAX_TURN_RATE;
+      targetSpeedLeft = fminf(fmaxf(targetSpeedLeft, -1.0f), 1.0f);
+
+      float speedLeftOutput = PID_Compute(&PID_SpeedLeft, targetSpeedLeft, speedLeft, dt);
+      float balanceTorque = PID_Compute(&PID_Pitch, 0.0f, currentAngle, dt);
+
+      // Điều chỉnh mô-men trong quá trình phục hồi
+      if (robotStatus.state == RECOVERY_IN_PROGRESS)
+      {
+        balanceTorque *= 0.7;
+      }
+
+      float pwmLeft = balanceTorque + speedLeftOutput * MAX_SPEED;
+      speedLeft = getMotorSpeed();
+      updateMotors(pwmLeft);
+    }
+    else
+    {
+      float positionError = homePosition - positionOffset;
+      float balanceTorque = PID_Compute(&PID_Pitch, 0.0f, currentAngle, dt);
+      float stabilizeTorque = PID_Compute(&PID_Position, 0.0f, positionError, dt);
+
+      if (robotStatus.state == RECOVERY_IN_PROGRESS)
+      {
+        balanceTorque *= 0.7;
+        stabilizeTorque *= 0.7;
+      }
+
+      float pwm = balanceTorque + stabilizeTorque;
+      updateMotors(pwm);
+    }
+  }
+
+  // // Kiểm tra an toàn sau mỗi chu kỳ điều khiển
+  // checkSafetyStop(angleY);
 }
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
 /**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
+ * @brief  Function implementing the defaultTask thread.
+ * @param  argument: Not used
+ * @retval None
+ */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
-  for(;;)
+  for (;;)
   {
     osDelay(1);
   }
@@ -703,17 +800,18 @@ void StartDefaultTask(void *argument)
 
 /* USER CODE BEGIN Header_ReceiveCAN */
 /**
-* @brief Function implementing the TaskReceiveCAN thread.
-* @param argument: Not used
-* @retval None
-*/
+ * @brief Function implementing the TaskReceiveCAN thread.
+ * @param argument: Not used
+ * @retval None
+ */
 /* USER CODE END Header_ReceiveCAN */
 void ReceiveCAN(void *argument)
 {
   /* USER CODE BEGIN ReceiveCAN */
   /* Infinite loop */
-  for(;;)
+  for (;;)
   {
+    checkSafetyStop(angleY);
     osDelay(1);
   }
   /* USER CODE END ReceiveCAN */
@@ -721,22 +819,24 @@ void ReceiveCAN(void *argument)
 
 /* USER CODE BEGIN Header_MotorControl */
 /**
-* @brief Function implementing the TaskMControl thread.
-* @param argument: Not used
-* @retval None
-*/
+ * @brief Function implementing the TaskMControl thread.
+ * @param argument: Not used
+ * @retval None
+ */
 /* USER CODE END Header_MotorControl */
 void MotorControl(void *argument)
 {
   /* USER CODE BEGIN MotorControl */
   /* Infinite loop */
-  for(;;)
+  for (;;)
   {
-		if (!isBalanced) {
+    if (!isBalanced)
+    {
       // T? d?ng c?n b?ng l?n d?u
       AutoBalanceOnStartup();
     }
-    else {
+    else
+    {
       controlLoop();
     }
     osDelay(1);
@@ -746,47 +846,48 @@ void MotorControl(void *argument)
 
 /* USER CODE BEGIN Header_ReadHall */
 /**
-* @brief Function implementing the TaskReadHall thread.
-* @param argument: Not used
-* @retval None
-*/
+ * @brief Function implementing the TaskReadHall thread.
+ * @param argument: Not used
+ * @retval None
+ */
 /* USER CODE END Header_ReadHall */
 void ReadHall(void *argument)
 {
   /* USER CODE BEGIN ReadHall */
   /* Infinite loop */
-  for(;;)
+  for (;;)
   {
-		// ??c hall sensor
-		currentState = readHallStateDebounced();
-		direction = getDirection(lastHallState, currentState);
-		if (direction != 0)
-		{
-			hallCounter += direction;
-			lastHallState = currentState;
-		}
-		// C?p nh?t v? tr? (do du?c t? hall sensor)
-		positionOffset = getMotorAngle(); // Gi? tr? do du?c (d?)
-																			// T?nh sai s? v? tr? (gi? s? v? tr? m?c ti?u l? 0 d?)
+    // ??c hall sensor
+    currentState = readHallStateDebounced();
+    direction = getDirection(lastHallState, currentState);
+    if (direction != 0)
+    {
+      hallCounter += direction;
+      lastHallState = currentState;
+    }
+    // C?p nh?t v? tr? (do du?c t? hall sensor)
+    positionOffset = getMotorAngle(); // Gi? tr? do du?c (d?)
+                                      // T?nh sai s? v? tr? (gi? s? v? tr? m?c ti?u l? 0 d?)
     osDelay(1);
   }
   /* USER CODE END ReadHall */
 }
 
 /**
-  * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM2 interrupt took place, inside
-  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
-  * a global variable "uwTick" used as application time base.
-  * @param  htim : TIM handle
-  * @retval None
-  */
+ * @brief  Period elapsed callback in non blocking mode
+ * @note   This function is called  when TIM2 interrupt took place, inside
+ * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+ * a global variable "uwTick" used as application time base.
+ * @param  htim : TIM handle
+ * @retval None
+ */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
 
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM2) {
+  if (htim->Instance == TIM2)
+  {
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
@@ -795,9 +896,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -809,14 +910,14 @@ void Error_Handler(void)
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */

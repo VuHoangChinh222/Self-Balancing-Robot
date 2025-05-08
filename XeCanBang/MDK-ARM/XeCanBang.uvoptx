@@ -153,27 +153,27 @@
         <Ww>
           <count>0</count>
           <WinNumber>1</WinNumber>
-          <ItemText>joystickData,0x0A</ItemText>
+          <ItemText>Ax,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>1</count>
           <WinNumber>1</WinNumber>
-          <ItemText>Ax,0x0A</ItemText>
+          <ItemText>Ay,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>2</count>
           <WinNumber>1</WinNumber>
-          <ItemText>Ay,0x0A</ItemText>
+          <ItemText>TxData,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>3</count>
           <WinNumber>1</WinNumber>
-          <ItemText>joystickData,0x0A</ItemText>
+          <ItemText>u8_RxData,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>4</count>
           <WinNumber>1</WinNumber>
-          <ItemText>TxData,0x0A</ItemText>
+          <ItemText>joystickData,0x0A</ItemText>
         </Ww>
       </WatchWindow1>
       <Tracepoint>
