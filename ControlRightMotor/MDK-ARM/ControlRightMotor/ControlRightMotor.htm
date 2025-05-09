@@ -3,7 +3,7 @@
 <title>Static Call Graph - [ControlRightMotor\ControlRightMotor.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image ControlRightMotor\ControlRightMotor.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060750: Last Updated: Thu May 08 18:13:38 2025
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060750: Last Updated: Thu May 08 23:52:00 2025
 <BR><P>
 <H3>Maximum Stack Usage =        240 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
@@ -884,7 +884,7 @@ Global Symbols
 <BR>[Address Reference Count : 1]<UL><LI> startup_stm32f103xb.o(RESET)
 </UL>
 <P><STRONG><a name="[3c]"></a>MotorControl</STRONG> (Thumb, 24 bytes, Stack size 0 bytes, main.o(i.MotorControl))
-<BR><BR>[Stack]<UL><LI>Max Depth = 112<LI>Call Chain = MotorControl &rArr; controlLoop &rArr; checkSafetyStop &rArr; updateMotors &rArr; fminf &rArr; __ARM_fcmp4
+<BR><BR>[Stack]<UL><LI>Max Depth = 104<LI>Call Chain = MotorControl &rArr; AutoBalanceOnStartup &rArr; osDelay &rArr; vTaskDelay &rArr; xTaskResumeAll &rArr; xTaskIncrementTick
 </UL>
 <BR>[Calls]<UL><LI><a href="#[65]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;osDelay
 <LI><a href="#[a9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;controlLoop
@@ -1025,17 +1025,15 @@ Global Symbols
 <LI><a href="#[b5]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_dmul
 <LI><a href="#[b6]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_d2f
 </UL>
-<BR>[Called By]<UL><LI><a href="#[a9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;controlLoop
-<LI><a href="#[3b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ReceiveCAN
+<BR>[Called By]<UL><LI><a href="#[3b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ReceiveCAN
 </UL>
 
-<P><STRONG><a name="[a9]"></a>controlLoop</STRONG> (Thumb, 358 bytes, Stack size 40 bytes, main.o(i.controlLoop))
-<BR><BR>[Stack]<UL><LI>Max Depth = 112<LI>Call Chain = controlLoop &rArr; checkSafetyStop &rArr; updateMotors &rArr; fminf &rArr; __ARM_fcmp4
+<P><STRONG><a name="[a9]"></a>controlLoop</STRONG> (Thumb, 354 bytes, Stack size 40 bytes, main.o(i.controlLoop))
+<BR><BR>[Stack]<UL><LI>Max Depth = 96<LI>Call Chain = controlLoop &rArr; PID_Compute &rArr; fminf &rArr; __ARM_fcmp4
 </UL>
 <BR>[Calls]<UL><LI><a href="#[5e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;PID_Compute
 <LI><a href="#[64]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;updateMotors
 <LI><a href="#[b8]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;getMotorSpeed
-<LI><a href="#[af]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;checkSafetyStop
 <LI><a href="#[61]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;fminf
 <LI><a href="#[ac]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;fmaxf
 <LI><a href="#[b7]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__ARM_scalbnf

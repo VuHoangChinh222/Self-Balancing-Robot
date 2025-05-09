@@ -80,20 +80,20 @@ const osThreadAttr_t TaskReadHall_attributes = {
 // Bien cho truong hop tôi gioi han can bang
 typedef enum
 {
-  NORMAL_OPERATION,
-  SAFETY_STOP,
-  WAITING_RECOVERY,
-  RECOVERY_IN_PROGRESS
+  NORMAL_OPERATION,    // Robot hoat dong binh thuong
+  SAFETY_STOP,         // Robot dung hoat dong
+  WAITING_RECOVERY,    // Robot dang cho phuc hoi trang thai can bang
+  RECOVERY_IN_PROGRESS // Robot dang phuc hoi trang thai can bang
 } RobotState;
 
 typedef struct
 {
-  RobotState state;
-  uint32_t stopTime;
-  uint32_t recoveryStartTime;
-  int32_t lastEncoderPosition;
-  uint8_t recoveryAttempts;
-  float lastStableAngle;
+  RobotState state;            // Trang thai hoat dong cua robot
+  uint32_t stopTime;           // Thoi gian dung hoat dong
+  uint32_t recoveryStartTime;  // Thoi gian bat dau phuc hoi
+  int32_t lastEncoderPosition; // Vi tri encoder cuoi cung
+  uint8_t recoveryAttempts;    // So lan phuc hoi
+  float lastStableAngle;       // Goc can bang cuoi cung
 } BalanceStatus;
 
 BalanceStatus robotStatus = {
@@ -109,27 +109,28 @@ volatile uint32_t stuckTimer = 0;
 PID_t PID_Position, PID_Pitch, PID_SpeedLeft;
 
 #define MAX_SPEED 1000
-#define MAX_TURN_RATE 0.5f   // He so quay toi da
-#define JOYSTICK_SCALE 0.01f // Scale [-100,100] -> [-10,10]
+#define MAX_TURN_RATE 0.5f    // He so quay toi da
+#define JOYSTICK_SCALE 0.001f // Scale [-100,100] -> [-1,1]
 // Them PID tam thoi cho khoi dong
 PID_t PID_Startup;
-uint8_t isBalanced = 0; // Co kiem tra do can bang
+uint8_t isBalanced = 0; // Flat kiem tra do can bang
 
 // Thoi gian lay mau
-float dt = 0.05; // 50ms
+float dt = 0.01; // 10ms
 
 // Lam muot PWM
-float smoothPWM = 0.0001; // PWM mupt (EMA)
-
+float smoothPWM = 0.0001; // PWM muot (EMA)
+static float lastPWM = 0;
+float alpha = 0.0f; // Hệ số làm mượt, 0 < alpha < 1 (alpha cang lon thi lam muot cang manh)
 // Cac bien toan cuc de luu trang thai hall sensor
-volatile uint8_t currentState = 0;
-volatile int8_t direction = 0;
-volatile float positionOffset = 0;
-volatile uint8_t lastHallState = 0;
-uint8_t lastState = 0;
+volatile uint8_t currentState = 0;  // Trang thai hien tai cua hall sensor
+volatile int8_t direction = 0;      // Huong quay cua dong co
+volatile float positionOffset = 0;  // Vi tri offset
+volatile uint8_t lastHallState = 0; // Trang thai hall sensor cu
+uint8_t lastState = 0;              // Trang thai cu
 volatile int32_t hallCounter = 0;   // dem so buoc (co dau: duong la quay thuan, am la quay nguoc)
 volatile float homePosition = 0.0f; // Luu vi tri ban dau sau khi can bang
-float anglemotor = 0;
+float anglemotor = 0;               // Goc quay cua dong co
 
 // CAN
 uint8_t RxData[4] = {0};
@@ -147,29 +148,29 @@ static void MX_CAN_Init(void);
 static void MX_TIM1_Init(void);
 void StartDefaultTask(void *argument);
 void ReceiveCAN(void *argument);
-void MotorControl(void *argument);
-void ReadHall(void *argument);
+void MotorControl(void *argument); // Ham dieu khien dong co
+void ReadHall(void *argument);     // Ham doc tin hieu hall sensor
 
 /* USER CODE BEGIN PFP */
-void AutoBalanceOnStartup(void);
+void AutoBalanceOnStartup(void); // Ham tu dong can bang khi khoi dong
 void checkSafetyStop(int16_t Y);
 void updateMotors(float PWM);
 void controlLoop(void);
 // Ham doc trang thai hall sensor: ghep 3 tin hieu thanh 1 gia tri 3-bit
 uint8_t readHallState(void);
-// H?m x?c d?nh hu?ng quay d?a v?o s? chuy?n d?i tr?ng th?i
-// Gi? s? c?c tr?ng th?i h?p l? l?: 101 (5), 100 (4), 110 (6), 010 (2), 011 (3), 001 (1)
-// Forward sequence (quay thu?n): 5 -> 4 -> 6 -> 2 -> 3 -> 1 -> 5...
-// Reverse sequence (quay ngu?c): 5 -> 1 -> 3 -> 2 -> 6 -> 4 -> 5...
+// Ham xac dinh huong quay dua vao su chuyen doi trang thai
+// Gia su cac trang thai hop le la: 101 (5), 100 (4), 110 (6), 010 (2), 011 (3), 001 (1)
+// Forward sequence (quay thuan): 5 -> 4 -> 6 -> 2 -> 3 -> 1 -> 5...
+// Reverse sequence (quay nguoc): 5 -> 1 -> 3 -> 2 -> 6 -> 4 -> 5...
 int8_t getDirection(uint8_t last, uint8_t current);
 // Ham tinh goc quay cua dong co
-// V?i gi? d?nh: 45 bu?c (transition) tuong duong 1 v?ng quay => m?i bu?c = 8 d?
+// Voi gia dinh: 45 bu?c (transition) tuong duong 1 vong quay => moi buoc = 8 do
 float getMotorAngle(void);
 uint8_t readHallStateDebounced(void);
-// H?m nh?n t?n hi?u CAN v? x? l? CAN
+// Ham nhan tin hieu CAN va xu ly CAN
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
 float getMotorSpeed(void);
-void PID_Reset(PID_t *pid);
+void PID_Reset(PID_t *pid); // Ham khoi tao lai PID
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -210,22 +211,22 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  PID_Position.Kp = 0.08;
+  PID_Position.Kp = 5;
   PID_Position.Ki = 0.0;
-  PID_Position.Kd = 0.0;
-  PID_Pitch.Kp = 0.6;
-  PID_Pitch.Ki = 0.1;
-  PID_Pitch.Kd = 0.09;
-  PID_SpeedLeft.Kp = 0.15;
-  PID_SpeedLeft.Ki = 0.01;
+  PID_Position.Kd = 2.5;
+  PID_Pitch.Kp = 10;
+  PID_Pitch.Ki = 0.0;
+  PID_Pitch.Kd = 4;
+  PID_SpeedLeft.Kp = 1.5;
+  PID_SpeedLeft.Ki = 0.0;
   PID_SpeedLeft.Kd = 0.05;
-  // PID cho giai do?n kh?i d?ng (tham s? m?m hon)
-  PID_Startup.Kp = 0.6; // Gi?m Kp d? tr?nh dao d?ng
-  PID_Startup.Ki = 0.02;
-  PID_Startup.Kd = 1.2; // Tang Kd d? gi?m overshoot
-  PID_Startup.integral = 0;
-  PID_Startup.prevError = 0;
-  // B?t y?u c?u ng?t khi d? li?u CAN nh?n v? du?c luu tr? g?i tin ? FIFO1 khi d?ng ID
+  // PID cho giai doan khoi dong
+  PID_Startup.Kp = 10;
+  PID_Startup.Ki = 0.0;
+  PID_Startup.Kd = 1.2;
+  PID_Startup.integral = 0;  // Khoi tao tich phan
+  PID_Startup.prevError = 0; // Khoi tao gia tri sai so truoc
+  // Bat yeu cau ngat khi du lieu CAN nhan ve duoc luu tru goi tin o FIFO1 khi dung ID
   if (HAL_CAN_Start(&hcan) != HAL_OK)
   {
     Error_Handler();
@@ -367,9 +368,9 @@ static void MX_CAN_Init(void)
   canfilterconfig.FilterActivation = CAN_FILTER_ENABLE;
   canfilterconfig.FilterBank = 0;
   canfilterconfig.FilterFIFOAssignment = CAN_RX_FIFO0;
-  canfilterconfig.FilterIdHigh = 0x0000 << 5; /*0x446<<5*/
+  canfilterconfig.FilterIdHigh = 0x0000 << 5; // Chap nhan tat ca cac ID
   canfilterconfig.FilterIdLow = 0x0000;
-  canfilterconfig.FilterMaskIdHigh = 0x0000 << 5; /*0x446<<5*/
+  canfilterconfig.FilterMaskIdHigh = 0x0000 << 5; // Chap nhan tat ca cac ID
   canfilterconfig.FilterMaskIdLow = 0x0000;
   canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK;
   canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT;
@@ -516,20 +517,20 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
   {
     switch (RxHeader.StdId)
     {
-    case 0x446: // Receive angle data
-      // Gh�p 2 byte th�nh s? 16-bit
+    case 0x446: // Nhan goc Y
+      // Ghep 2 byte thanh 1 gia tri 16 bit
       raw_angle = ((int16_t)RxData[2] << 8) | RxData[3];
-      // Chuy?n d?i v� �p d?ng d?u
+      // Chuyen doi goc Y thanh goc thuc te co dau
       angleY = (RxData[1] ? 1 : -1) * raw_angle;
       break;
-    case 0x447: // Receive X and partial Y
-      // Store X data
+    case 0x447: // Nhan gia tri joystick X va dau cua joystick Y
+      // Luu tru gia tri joystick X
       joyStickX = RxData[0] ? ((RxData[1] << 8) | RxData[2]) : -((RxData[1] << 8) | RxData[2]);
-      // Store first part of Y
-      joyStickY = RxData[3] ? 1 : -1; // Y sign
+      // Luu tru dau cua joystick Y
+      joyStickY = RxData[3] ? 1 : -1;
       break;
-    case 0x448: // Receive remaining Y data
-      // Store remaining Y data
+    case 0x448: // Nhan gia tri joystick Y
+      // Luu tru gia tri joystick Y
       joyStickY *= (RxData[0] << 8) | RxData[1];
       break;
     default:
@@ -547,42 +548,44 @@ void updateMotors(float PWM)
 {
   uint16_t pwmLeft = (uint16_t)fminf(fabsf(PWM), MAX_SPEED);
 
+  float rawPWM = pwmLeft;
+  float smoothPWM = alpha > 0 ? (alpha * rawPWM + (1 - alpha) * lastPWM) : rawPWM;
+  lastPWM = smoothPWM;
+
   HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM < 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
 
-  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwmLeft);
+  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, smoothPWM);
 }
 
 void AutoBalanceOnStartup()
 {
-  const float targetAngle = 0.0; // G?c m?c ti?u
-  const float tolerance = 1.0;   // Sai s? cho ph?p (?1 d?)
+  const float targetAngle = 0.0; // Goc muc tieu
+  const float tolerance = 1.0;   // Sai so cho phep (+-1 do)
 
-  while (!isBalanced)
+  while (!isBalanced) // Vong lap cho den khi can bang
   {
-    // ?i?u khi?n PID t?m th?i ch? d?nh cho kh?i d?ng
     float y = angleY;
     float error = targetAngle - y;
     float output = PID_Compute(&PID_Startup, targetAngle, y, dt);
     currentState = readHallStateDebounced();
     direction = getDirection(lastHallState, currentState);
-    // C?p nh?t hallCounter n?u c? s? thay d?i h?p l?
+    // Cap nhan hallCounter neu co su thay doi trang thai hop le
     if (direction != 0)
     {
       hallCounter += direction;
       lastHallState = currentState;
     }
-    // C?p nh?t d?ng co
-
-    float motor_balance = 1.0 + (y * 0.02); // Hi?u ch?nh theo hu?ng nghi?ng
+    // Cap nhat dong co
+    float motor_balance = 1.0 + (y * 0.02); // Hieu chinh theo huong nghien
     updateMotors(output * motor_balance);
-    // Ki?m tra di?u ki?n ?n d?nh
+    // Kiem tra dieu kien can bang
     if (fabs(error) < tolerance)
     {
       isBalanced = 1;
       homePosition = getMotorAngle();
       break;
     }
-    HAL_Delay(5); // Ch? 5ms
+    HAL_Delay(5); // Cho 5ms
   }
 }
 
@@ -625,8 +628,8 @@ void checkSafetyStop(int16_t Y)
 
   switch (robotStatus.state)
   {
-  case NORMAL_OPERATION:
-    if (fabs(currentAngle) > 35)
+  case NORMAL_OPERATION: // Hoat dong binh thuong
+    if (fabs(currentAngle) >= 35)
     {
       robotStatus.state = SAFETY_STOP;
       robotStatus.stopTime = currentTime;
@@ -635,7 +638,7 @@ void checkSafetyStop(int16_t Y)
     }
     break;
 
-  case SAFETY_STOP:
+  case SAFETY_STOP: // Dung hoat dong
     if (currentTime - robotStatus.stopTime >= 500)
     {
       if (robotStatus.recoveryAttempts < 3)
@@ -648,7 +651,7 @@ void checkSafetyStop(int16_t Y)
     }
     break;
 
-  case RECOVERY_IN_PROGRESS:
+  case RECOVERY_IN_PROGRESS: // Phuc hoi trang thai can bang
     if (fabs(currentAngle) < 2)
     {
       robotStatus.state = NORMAL_OPERATION;
@@ -670,7 +673,7 @@ void checkSafetyStop(int16_t Y)
     }
     break;
 
-  default:
+  default: // Trạng thái không hợp lệ
     robotStatus.state = SAFETY_STOP;
     break;
   }
@@ -678,7 +681,8 @@ void checkSafetyStop(int16_t Y)
 
 uint8_t readHallState(void)
 {
-  // ??c m?c logic t? c?c ch?n GPIO
+  // Doc trang thai hall sensor
+  // Ghep 3 trang thai thanh 1 gia tri 3-bit
   uint8_t u = HAL_GPIO_ReadPin(HALL_U_GPIO_Port, HALL_U_Pin);
   uint8_t v = HAL_GPIO_ReadPin(HALL_V_GPIO_Port, HALL_V_Pin);
   uint8_t w = HAL_GPIO_ReadPin(HALL_W_GPIO_Port, HALL_W_Pin);
@@ -687,7 +691,8 @@ uint8_t readHallState(void)
 
 int8_t getDirection(uint8_t last, uint8_t current)
 {
-  // B?ng chuy?n d?i h?p l? (Forward v? Reverse)
+  // Bang chuyen doi trang thai hop le
+  // Gia su cac trang thai hop le la: 101 (5), 100 (4), 110 (6), 010 (2), 011 (3), 001 (1)
   const uint8_t validTransitions[12][2] = {
       {5, 4}, {4, 6}, {6, 2}, {2, 3}, {3, 1}, {1, 5}, // Forward
       {5, 1},
@@ -704,7 +709,7 @@ int8_t getDirection(uint8_t last, uint8_t current)
       return (i < 6) ? 1 : -1;
     }
   }
-  return 0; // Kh?ng h?p l?
+  return 0; // Trang thai khong hop le
 }
 
 uint8_t readHallStateDebounced(void)
@@ -716,7 +721,7 @@ uint8_t readHallStateDebounced(void)
 
 float getMotorAngle(void)
 {
-  return ((float)hallCounter / 45.0f) * 360.0f; // Ho?c: hallCounter * 8.0f;
+  return ((float)hallCounter / 45.0f) * 360.0f; // Hoac: hallCounter * 8.0f;
 }
 
 void controlLoop(void)
@@ -739,7 +744,7 @@ void controlLoop(void)
       turnInput *= 0.5f;
     }
 
-    if (fabs(forwardInput) > 0.1f || fabs(turnInput) > 0.1f)
+    if (fabs(forwardInput) > 0.1f || fabs(turnInput) > 0.1f) // Neu co dieu khien
     {
       float targetSpeedLeft = forwardInput;
       targetSpeedLeft += turnInput * MAX_TURN_RATE;
@@ -774,9 +779,6 @@ void controlLoop(void)
       updateMotors(pwm);
     }
   }
-
-  // // Kiểm tra an toàn sau mỗi chu kỳ điều khiển
-  // checkSafetyStop(angleY);
 }
 /* USER CODE END 4 */
 
@@ -811,7 +813,7 @@ void ReceiveCAN(void *argument)
   /* Infinite loop */
   for (;;)
   {
-    checkSafetyStop(angleY);
+    checkSafetyStop(angleY); // Kiem tra trang thai an toan
     osDelay(1);
   }
   /* USER CODE END ReceiveCAN */
@@ -832,7 +834,7 @@ void MotorControl(void *argument)
   {
     if (!isBalanced)
     {
-      // T? d?ng c?n b?ng l?n d?u
+      // Tu dong can bang khi khoi dong
       AutoBalanceOnStartup();
     }
     else
@@ -857,7 +859,7 @@ void ReadHall(void *argument)
   /* Infinite loop */
   for (;;)
   {
-    // ??c hall sensor
+    // Doc trang thai hall sensor
     currentState = readHallStateDebounced();
     direction = getDirection(lastHallState, currentState);
     if (direction != 0)
@@ -865,9 +867,9 @@ void ReadHall(void *argument)
       hallCounter += direction;
       lastHallState = currentState;
     }
-    // C?p nh?t v? tr? (do du?c t? hall sensor)
-    positionOffset = getMotorAngle(); // Gi? tr? do du?c (d?)
-                                      // T?nh sai s? v? tr? (gi? s? v? tr? m?c ti?u l? 0 d?)
+    // Cap nhat vi tri dong co
+    positionOffset = getMotorAngle(); // Gia tri do duoc tu hall sensor
+                                      // Tinh sai so vi tri
     osDelay(1);
   }
   /* USER CODE END ReadHall */

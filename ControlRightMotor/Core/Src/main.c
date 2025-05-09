@@ -108,8 +108,8 @@ volatile uint32_t stuckTimer = 0;
 PID_t PID_Position, PID_Pitch, PID_SpeedRight;
 
 #define MAX_SPEED 1000
-#define MAX_TURN_RATE 0.5f   // He so quay toi da
-#define JOYSTICK_SCALE 0.01f // Scale [-1000,1000] -> [-10,10]
+#define MAX_TURN_RATE 0.5f    // He so quay toi da
+#define JOYSTICK_SCALE 0.001f // Scale [-1000,1000] -> [-1,1]
 
 // Them PID tam thoi cho khoi dong
 PID_t PID_Startup;
@@ -119,7 +119,7 @@ uint8_t isBalanced = 0; // Co kiem tra do can bang
 float dt = 0.01; // 10ms
 
 // Lam muot PWM
-float smoothPWM = 0.0001; // PWM mupt (EMA)
+float smoothPWM = 0.0001; // PWM muot (EMA)
 
 // Cac bien toan cuc de luu trang thai hall sensor
 volatile uint8_t currentState = 0;
@@ -155,18 +155,15 @@ void AutoBalanceOnStartup(void);
 void checkSafetyStop(int16_t Y);
 void updateMotors(float PWM);
 void controlLoop(void);
-// Ham doc trang thai hall sensor: ghep 3 tin hieu thanh 1 gia tri 3-bit
+// Ham doc trang thai hall sensor
 uint8_t readHallState(void);
-// H�m x�c d?nh hu?ng quay d?a v�o s? chuy?n d?i tr?ng th�i
-// Gi? s? c�c tr?ng th�i h?p l? l�: 101 (5), 100 (4), 110 (6), 010 (2), 011 (3), 001 (1)
-// Forward sequence (quay thu?n): 5 -> 4 -> 6 -> 2 -> 3 -> 1 -> 5...
-// Reverse sequence (quay ngu?c): 5 -> 1 -> 3 -> 2 -> 6 -> 4 -> 5...
+// Ham xac dinh huong quay cua dong co
 int8_t getDirection(uint8_t last, uint8_t current);
 // Ham tinh goc quay cua dong co
-// V?i gi? d?nh: 45 bu?c (transition) tuong duong 1 v�ng quay => m?i bu?c = 8 d?
+// Voi gia dinh co 45 buoc tren 1 vong
 float getMotorAngle(void);
 uint8_t readHallStateDebounced(void);
-// H�m nh?n t�n hi?u CAN v� x? l� CAN
+// Ham nhan tin hieu CAN va xu ly CAN
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
 float getMotorSpeed(void);
 void PID_Reset(PID_t *pid);
@@ -210,22 +207,21 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  PID_Position.Kp = 0.08;
+  PID_Position.Kp = 5;
   PID_Position.Ki = 0.0;
-  PID_Position.Kd = 0.0;
-  PID_Pitch.Kp = 0.23;
-  PID_Pitch.Ki = 0.1;
-  PID_Pitch.Kd = 0.09;
-  PID_SpeedRight.Kp = 0.15;
-  PID_SpeedRight.Ki = 0.01;
+  PID_Position.Kd = 2.5;
+  PID_Pitch.Kp = 10;
+  PID_Pitch.Ki = 0.0;
+  PID_Pitch.Kd = 4;
+  PID_SpeedRight.Kp = 1.5;
+  PID_SpeedRight.Ki = 0.0;
   PID_SpeedRight.Kd = 0.05;
-  // PID cho giai do?n kh?i d?ng (tham s? m?m hon)
-  PID_Startup.Kp = 0.6; // Gi?m Kp d? tr�nh dao d?ng
-  PID_Startup.Ki = 0.02;
-  PID_Startup.Kd = 1.2; // Tang Kd d? gi?m overshoot
+  // PID cho giai doan khoi dong
+  PID_Startup.Kp = 10;
+  PID_Startup.Ki = 0;
+  PID_Startup.Kd = 1.2;
   PID_Startup.integral = 0;
   PID_Startup.prevError = 0;
-  // B?t y�u c?u ng?t khi d? li?u CAN nh?n v� du?c luu tr? g�i tin ? FIFO1 khi d�ng ID
   if (HAL_CAN_Start(&hcan) != HAL_OK)
   {
     Error_Handler();
@@ -367,9 +363,9 @@ static void MX_CAN_Init(void)
   canfilterconfig.FilterActivation = CAN_FILTER_ENABLE;
   canfilterconfig.FilterBank = 0;
   canfilterconfig.FilterFIFOAssignment = CAN_RX_FIFO0;
-  canfilterconfig.FilterIdHigh = 0x0000 << 5; /*0x446<<5*/
+  canfilterconfig.FilterIdHigh = 0x0000 << 5;
   canfilterconfig.FilterIdLow = 0x0000;
-  canfilterconfig.FilterMaskIdHigh = 0x0000 << 5; /*0x446<<5*/
+  canfilterconfig.FilterMaskIdHigh = 0x0000 << 5;
   canfilterconfig.FilterMaskIdLow = 0x0000;
   canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK;
   canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT;
@@ -554,8 +550,8 @@ void updateMotors(float PWM)
 
 void AutoBalanceOnStartup()
 {
-  const float targetAngle = 0.0; // G�c m?c ti�u
-  const float tolerance = 1.0;   // Sai s? cho ph�p (�1 d?)
+  const float targetAngle = 0.0; // Goc muc tieu
+  const float tolerance = 1.0;   // Sai so cho phep (+-1 do)
   uint32_t stableTime = 0;
   uint32_t startTime = HAL_GetTick();
   while (!isBalanced)
@@ -565,15 +561,14 @@ void AutoBalanceOnStartup()
 
     // Gentle startup
     float output = PID_Compute(&PID_Startup, targetAngle, y, dt);
-    output *= fminf((HAL_GetTick() - startTime) / 1000.0f, 1.0f); // Ramp up over 1 second
+    output *= fminf((HAL_GetTick() - startTime) / 1000.0f, 1.0f);
 
-    // Check stability
     if (fabs(error) < tolerance)
     {
       if (stableTime == 0)
         stableTime = HAL_GetTick();
       else if (HAL_GetTick() - stableTime > 500)
-      { // Stable for 500ms
+      { // Thoi gian can
         isBalanced = 1;
         homePosition = getMotorAngle();
         break;
@@ -629,7 +624,7 @@ void checkSafetyStop(int16_t Y)
   switch (robotStatus.state)
   {
   case NORMAL_OPERATION:
-    if (fabs(currentAngle) > 35)
+    if (fabs(currentAngle) >= 35)
     {
       robotStatus.state = SAFETY_STOP;
       robotStatus.stopTime = currentTime;
@@ -681,7 +676,6 @@ void checkSafetyStop(int16_t Y)
 
 uint8_t readHallState(void)
 {
-  // �?c m?c logic t? c�c ch�n GPIO
   uint8_t u = HAL_GPIO_ReadPin(HALL_U_GPIO_Port, HALL_U_Pin);
   uint8_t v = HAL_GPIO_ReadPin(HALL_V_GPIO_Port, HALL_V_Pin);
   uint8_t w = HAL_GPIO_ReadPin(HALL_W_GPIO_Port, HALL_W_Pin);
@@ -707,7 +701,7 @@ int8_t getDirection(uint8_t last, uint8_t current)
       return (i < 6) ? 1 : -1;
     }
   }
-  return 0; // Kh�ng h?p l?
+  return 0;
 }
 
 uint8_t readHallStateDebounced(void)
@@ -869,9 +863,7 @@ void ReadHall(void *argument)
       hallCounter += direction;
       lastHallState = currentState;
     }
-    // C?p nh?t v? tr� (do du?c t? hall sensor)
-    positionOffset = getMotorAngle(); // Gi� tr? do du?c (d?)
-                                      // T�nh sai s? v? tr� (gi? s? v? tr� m?c ti�u l� 0 d?)
+    positionOffset = getMotorAngle();
     osDelay(1);
   }
   /* USER CODE END ReadHall */
