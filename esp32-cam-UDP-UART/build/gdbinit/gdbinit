@@ -1,0 +1,2 @@
+source F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/gdbinit/symbols
+source F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/gdbinit/connect
