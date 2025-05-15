@@ -126,11 +126,13 @@ volatile uint8_t currentState = 0;  // Trang thai hien tai cua hall sensor
 volatile int8_t direction = 0;      // Huong quay cua dong co
 volatile float positionOffset = 0;  // Vi tri offset
 volatile uint8_t lastHallState = 0; // Trang thai hall sensor cu
-uint8_t lastState = 0;              // Trang thai cu
 volatile int32_t hallCounter = 0;   // dem so buoc (co dau: duong la quay thuan, am la quay nguoc)
 volatile float homePosition = 0.0f; // Luu vi tri ban dau sau khi can bang
 float anglemotor = 0;               // Goc quay cua dong co
-
+volatile uint8_t u = 0;
+volatile uint8_t v = 0;
+volatile uint8_t w = 0;
+uint8_t checkrunFirtTime = 0; // Bien kiem tra lan dau doc Hall sensor
 // CAN
 uint8_t RxData[4] = {0};
 volatile int32_t joyStickX = 0, joyStickY = 0;
@@ -147,8 +149,8 @@ static void MX_CAN_Init(void);
 static void MX_TIM1_Init(void);
 void StartDefaultTask(void *argument);
 void ReceiveCAN(void *argument);
-void MotorControl(void *argument); // Ham dieu khien dong co
-void ReadHall(void *argument);     // Ham doc tin hieu hall sensor
+void MotorControl(void *argument);
+void ReadHall(void *argument);
 
 /* USER CODE BEGIN PFP */
 void AutoBalanceOnStartup(void); // Ham tu dong can bang khi khoi dong
@@ -165,7 +167,6 @@ int8_t getDirection(uint8_t last, uint8_t current);
 // Ham tinh goc quay cua dong co
 // Voi gia dinh: 45 bu?c (transition) tuong duong 1 vong quay => moi buoc = 8 do
 float getMotorAngle(void);
-uint8_t readHallStateDebounced(void);
 // Ham nhan tin hieu CAN va xu ly CAN
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
 float getMotorSpeed(void);
@@ -191,7 +192,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
- HAL_Init();
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -485,24 +486,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : HALL_U_Pin HALL_V_Pin */
-  GPIO_InitStruct.Pin = HALL_U_Pin | HALL_V_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : HALL_W_Pin */
-  GPIO_InitStruct.Pin = HALL_W_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(HALL_W_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pin : DIR_Pin */
   GPIO_InitStruct.Pin = DIR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(DIR_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : HALL_U_Pin HALL_V_Pin HALL_W_Pin */
+  GPIO_InitStruct.Pin = HALL_U_Pin | HALL_V_Pin | HALL_W_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
   /* USER CODE END MX_GPIO_Init_2 */
@@ -566,7 +561,7 @@ void AutoBalanceOnStartup()
     float y = angleY;
     float error = targetAngle - y;
     float output = PID_Compute(&PID_Startup, targetAngle, y, dt);
-    currentState = readHallStateDebounced();
+    currentState = readHallState();
     direction = getDirection(lastHallState, currentState);
     // Cap nhan hallCounter neu co su thay doi trang thai hop le
     if (direction != 0)
@@ -682,9 +677,9 @@ uint8_t readHallState(void)
 {
   // Doc trang thai hall sensor
   // Ghep 3 trang thai thanh 1 gia tri 3-bit
-  uint8_t u = HAL_GPIO_ReadPin(HALL_U_GPIO_Port, HALL_U_Pin);
-  uint8_t v = HAL_GPIO_ReadPin(HALL_V_GPIO_Port, HALL_V_Pin);
-  uint8_t w = HAL_GPIO_ReadPin(HALL_W_GPIO_Port, HALL_W_Pin);
+  u = HAL_GPIO_ReadPin(HALL_U_GPIO_Port, HALL_U_Pin);
+  v = HAL_GPIO_ReadPin(HALL_V_GPIO_Port, HALL_V_Pin);
+  w = HAL_GPIO_ReadPin(HALL_W_GPIO_Port, HALL_W_Pin);
   return (u << 2) | (v << 1) | w;
 }
 
@@ -709,13 +704,7 @@ int8_t getDirection(uint8_t last, uint8_t current)
     }
   }
   return 0; // Trang thai khong hop le
-}
-
-uint8_t readHallStateDebounced(void)
-{
-  uint8_t currentState = readHallState();
-  lastState = currentState;
-  return lastState;
+  //	return current!= last ? 1:0;
 }
 
 float getMotorAngle(void)
@@ -859,8 +848,14 @@ void ReadHall(void *argument)
   for (;;)
   {
     // Doc trang thai hall sensor
-    currentState = readHallStateDebounced();
-    direction = getDirection(lastHallState, currentState);
+    currentState = readHallState();
+    if (checkrunFirtTime == 0)
+    {
+      lastHallState = currentState;
+      checkrunFirtTime = 1;
+    }
+    else
+      direction = getDirection(lastHallState, currentState);
     if (direction != 0)
     {
       hallCounter += direction;
@@ -872,28 +867,6 @@ void ReadHall(void *argument)
     osDelay(1);
   }
   /* USER CODE END ReadHall */
-}
-
-/**
- * @brief  Period elapsed callback in non blocking mode
- * @note   This function is called  when TIM2 interrupt took place, inside
- * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
- * a global variable "uwTick" used as application time base.
- * @param  htim : TIM handle
- * @retval None
- */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  /* USER CODE BEGIN Callback 0 */
-
-  /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM2)
-  {
-    HAL_IncTick();
-  }
-  /* USER CODE BEGIN Callback 1 */
-
-  /* USER CODE END Callback 1 */
 }
 
 /**

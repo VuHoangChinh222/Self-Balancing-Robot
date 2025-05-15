@@ -59,14 +59,14 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define HALL_U_Pin GPIO_PIN_6
-#define HALL_U_GPIO_Port GPIOA
-#define HALL_V_Pin GPIO_PIN_7
-#define HALL_V_GPIO_Port GPIOA
-#define HALL_W_Pin GPIO_PIN_0
-#define HALL_W_GPIO_Port GPIOB
 #define DIR_Pin GPIO_PIN_9
 #define DIR_GPIO_Port GPIOA
+#define HALL_U_Pin GPIO_PIN_6
+#define HALL_U_GPIO_Port GPIOB
+#define HALL_V_Pin GPIO_PIN_7
+#define HALL_V_GPIO_Port GPIOB
+#define HALL_W_Pin GPIO_PIN_8
+#define HALL_W_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
