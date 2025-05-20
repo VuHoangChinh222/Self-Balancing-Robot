@@ -3,7 +3,7 @@
 <title>Static Call Graph - [XeCanBang\XeCanBang.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image XeCanBang\XeCanBang.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060750: Last Updated: Mon May 12 10:22:54 2025
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060750: Last Updated: Tue May 20 15:27:16 2025
 <BR><P>
 <H3>Maximum Stack Usage =        248 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
@@ -566,8 +566,8 @@ Global Symbols
 </UL>
 <P><STRONG><a name="[16d]"></a>__semihosting_library_function</STRONG> (Thumb, 0 bytes, Stack size 0 bytes, indicate_semi.o(.text), UNUSED)
 
-<P><STRONG><a name="[67]"></a>CAN_Send_Extended</STRONG> (Thumb, 226 bytes, Stack size 40 bytes, main.o(i.CAN_Send_Extended))
-<BR><BR>[Stack]<UL><LI>Max Depth = 112<LI>Call Chain = CAN_Send_Extended &rArr; osDelay &rArr; vTaskDelay &rArr; xTaskResumeAll &rArr; xTaskIncrementTick
+<P><STRONG><a name="[67]"></a>CAN_Send_Extended</STRONG> (Thumb, 276 bytes, Stack size 32 bytes, main.o(i.CAN_Send_Extended))
+<BR><BR>[Stack]<UL><LI>Max Depth = 104<LI>Call Chain = CAN_Send_Extended &rArr; osDelay &rArr; vTaskDelay &rArr; xTaskResumeAll &rArr; xTaskIncrementTick
 </UL>
 <BR>[Calls]<UL><LI><a href="#[6a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;osDelay
 <LI><a href="#[69]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_TogglePin

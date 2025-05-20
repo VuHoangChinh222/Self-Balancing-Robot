@@ -114,14 +114,16 @@ typedef struct
 JoystickData_t joystickData = {0, 0};
 osMutexId_t joystickMutexHandle;
 #define UART_BUFFER_SIZE 32
-#define MPU_SAMPLE_RATE 5    // 200Hz
-#define CAN_SEND_INTERVAL 10 // Gửi mỗi 10ms
-#define CAN_RETRY_COUNT 3    // Số lần thử lại nếu gửi thất bại
+#define MPU_SAMPLE_RATE 5   // 200Hz
+#define CAN_SEND_INTERVAL 5 // Gửi mỗi 5ms
+#define CAN_RETRY_COUNT 3   // Số lần thử lại nếu gửi thất bại
 MPU6050_t MPU6050;
 // Biến nhận tín hiệu UART2
 uint8_t u8_RxBuff[UART_BUFFER_SIZE];
 uint8_t u8_RxData;
 uint8_t rxIndex;
+uint32_t lastReceiveUARTTime = 0;
+uint8_t uartActive = 0;
 // Các biến liên quan đến cân bằng
 volatile float Ax = 0, Ay = 0;
 // CAN
@@ -531,7 +533,7 @@ void CAN_Send_Extended(int16_t angle, int16_t x, int16_t y)
   TxHeader.StdId = 0x446;
   TxHeader.DLC = 4;
 
-  TxData[0] = 'A'; // Command "S" for angle
+  TxData[0] = 12; // Command "S" for angle
   TxData[1] = angle >= 0 ? 1 : 0;
   angle = angle < 0 ? -angle : angle;
   TxData[2] = (angle >> 8) & 0xFF;
@@ -543,39 +545,43 @@ void CAN_Send_Extended(int16_t angle, int16_t x, int16_t y)
     Error_Handler();
   }
 
-  osDelay(1); // Delay nhỏ giữa các lần gửi
-
-  // Gửi giá trị X,Y
-  TxHeader.StdId = 0x447;
-  TxHeader.DLC = 4;
-
-  // Gửi X
-  TxData[0] = x >= 0 ? 1 : 0;
-  x = abs(x);
-  TxData[1] = (x >> 8) & 0xFF;
-  TxData[2] = x & 0xFF;
-  // Gửi Y
-  TxData[3] = y > 0 ? 1 : 0;
-
-  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+  osDelay(10); // Delay nhỏ giữa các lần gửi
+  if (x <= 100 && x >= -100)
   {
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    Error_Handler();
+    // Gửi giá trị X,Y
+    TxHeader.StdId = 0x447;
+    TxHeader.DLC = 4;
+
+    // Gửi X
+    TxData[0] = 22; // Command "X" for joystickX
+    TxData[1] = x > 0 ? 1 : 0;
+    x = abs(x);
+    TxData[2] = (x >> 8) & 0xFF;
+    TxData[3] = x & 0xFF;
+
+    if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+    {
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+      Error_Handler();
+    }
   }
-
-  osDelay(1);
-
-  // Tiếp tục gửi phần còn lại của Y
-  TxHeader.StdId = 0x448;
-  TxHeader.DLC = 2;
-  y = abs(y);
-  TxData[0] = (y >> 8) & 0xFF;
-  TxData[1] = y & 0xFF;
-
-  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+  osDelay(10);
+  // Gửi giá trị Y
+  if (y <= 100 && y >= -100)
   {
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    Error_Handler();
+    TxHeader.StdId = 0x448;
+    TxHeader.DLC = 4;
+    TxData[0] = 23; // Command "Y" for joystickY
+    TxData[1] = y > 0 ? 1 : 0;
+    y = abs(y);
+    TxData[2] = (y >> 8) & 0xFF;
+    TxData[3] = y & 0xFF;
+
+    if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+    {
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+      Error_Handler();
+    }
   }
 }
 /* USER CODE END 4 */
@@ -593,7 +599,6 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for (;;)
   {
-
     osDelay(1000);
   }
   /* USER CODE END 5 */

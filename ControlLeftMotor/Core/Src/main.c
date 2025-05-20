@@ -103,7 +103,6 @@ BalanceStatus robotStatus = {
     .lastEncoderPosition = 0,
     .recoveryAttempts = 0,
     .lastStableAngle = 0};
-volatile uint32_t stuckTimer = 0;
 //------------------------------------
 
 PID_t PID_Position, PID_Pitch, PID_SpeedLeft;
@@ -120,7 +119,8 @@ float dt = 0.01; // 10ms
 
 // Lam muot PWM
 static float lastPWM = 0;
-float alpha = 0.0f; // Hệ số làm mượt, 0 < alpha < 1 (alpha cang lon thi lam muot cang manh)
+float alphaReducePWM = 0.2f; // Hệ số làm mượt, 0 < alpha < 1 (alpha cang lon thi lam muot cang manh 
+float alphaIncreasePWM = 0.7f; // Hệ số làm mượt, 0 < alpha < 1 (alpha cang lon thi lam muot cang manh)
 // Cac bien toan cuc de luu trang thai hall sensor
 volatile uint8_t currentState = 0;  // Trang thai hien tai cua hall sensor
 volatile int8_t direction = 0;      // Huong quay cua dong co
@@ -139,7 +139,6 @@ volatile int32_t joyStickX = 0, joyStickY = 0;
 CAN_RxHeaderTypeDef RxHeader;
 volatile char *command = "";
 volatile int16_t angleY = 0;
-volatile int16_t value;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -169,7 +168,6 @@ int8_t getDirection(uint8_t last, uint8_t current);
 float getMotorAngle(void);
 // Ham nhan tin hieu CAN va xu ly CAN
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
-float getMotorSpeed(void);
 void PID_Reset(PID_t *pid); // Ham khoi tao lai PID
 /* USER CODE END PFP */
 
@@ -211,15 +209,16 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  PID_Position.Kp = 5;
+  PID_Position.Kp = 0.0;
   PID_Position.Ki = 0.0;
-  PID_Position.Kd = 2.5;
-  PID_Pitch.Kp = 10;
+  PID_Position.Kd = 0.0;
+  PID_Pitch.Kp = 12.0;
   PID_Pitch.Ki = 0.0;
-  PID_Pitch.Kd = 4;
-  PID_SpeedLeft.Kp = 1.5;
+  PID_Pitch.Kd = 0.0;
+  PID_SpeedLeft.Kp = 0.5;
   PID_SpeedLeft.Ki = 0.0;
-  PID_SpeedLeft.Kd = 0.05;
+  PID_SpeedLeft.Kd = 0.005
+	;
   // PID cho giai doan khoi dong
   PID_Startup.Kp = 10;
   PID_Startup.Ki = 0.0;
@@ -403,7 +402,7 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 7200 - 1;
+  htim1.Init.Prescaler = 3600 - 1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim1.Init.Period = 1000 - 1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -517,15 +516,34 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
       // Chuyen doi goc Y thanh goc thuc te co dau
       angleY = (RxData[1] ? 1 : -1) * raw_angle;
       break;
-    case 0x447: // Nhan gia tri joystick X va dau cua joystick Y
+    case 0x447: // Nhan gia tri joystick X
       // Luu tru gia tri joystick X
-      joyStickX = RxData[0] ? ((RxData[1] << 8) | RxData[2]) : -((RxData[1] << 8) | RxData[2]);
-      // Luu tru dau cua joystick Y
-      joyStickY = RxData[3] ? 1 : -1;
+      if (RxData[0] != 22)
+      {
+        joyStickX = 0;
+      }
+      else
+      {
+        joyStickX = RxData[1] ? ((RxData[2] << 8) | RxData[3]) : -((RxData[2] << 8) | RxData[3]);
+      }
+      if (joyStickX > 100 || joyStickX < -100)
+      {
+        joyStickX = 0;
+      }
       break;
     case 0x448: // Nhan gia tri joystick Y
-      // Luu tru gia tri joystick Y
-      joyStickY *= (RxData[0] << 8) | RxData[1];
+      if (RxData[0] != 32)
+      {
+        joyStickY = 0;
+      }
+      else
+      {
+        joyStickY = RxData[1] ? ((RxData[2] << 8) | RxData[3]) : -((RxData[2] << 8) | RxData[3]);
+      }
+      if (joyStickY > 100 || joyStickY < -100)
+      {
+        joyStickY = 0;
+      }
       break;
     default:
       Error_Handler();
@@ -540,15 +558,18 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
 void updateMotors(float PWM)
 {
-  uint16_t pwmLeft = (uint16_t)fminf(fabsf(PWM), MAX_SPEED);
-
-  float rawPWM = pwmLeft;
-  float smoothPWM = alpha > 0 ? (alpha * rawPWM + (1 - alpha) * lastPWM) : rawPWM;
+  float rawPWM = fminf(fabsf(PWM), MAX_SPEED);
+  float smoothPWM =0;
+	if(lastPWM<rawPWM) 
+		smoothPWM=alphaIncreasePWM > 0 ? (alphaIncreasePWM * rawPWM + (1 - alphaIncreasePWM) * lastPWM) : rawPWM;
+	else
+		smoothPWM=alphaReducePWM > 0 ? (alphaReducePWM* rawPWM + (1 - alphaReducePWM) * lastPWM) : rawPWM;
+	
   lastPWM = smoothPWM;
 
-  HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM < 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
+  HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM > 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
 
-  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, smoothPWM);
+  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,(uint16_t)(smoothPWM + 0.5f));
 }
 
 void AutoBalanceOnStartup()
@@ -579,28 +600,8 @@ void AutoBalanceOnStartup()
       homePosition = getMotorAngle();
       break;
     }
-    HAL_Delay(5); // Cho 5ms
+    HAL_Delay(5); // 5ms
   }
-}
-
-float getMotorSpeed(void)
-{
-  static int32_t lastHallCounter = 0;
-  static uint32_t lastTick = 0;
-  uint32_t now = HAL_GetTick();
-  int32_t deltaHall = hallCounter - lastHallCounter;
-  uint32_t deltaTime = now - lastTick; // ms
-
-  float speed = 0.0f;
-  if (deltaTime > 0)
-  {
-    // Số vòng quay mỗi giây (rps): (deltaHall/45) vòng trong deltaTime ms
-    speed = ((float)deltaHall / 45.0f) * (1000.0f / (float)deltaTime); // vòng/giây
-  }
-
-  lastHallCounter = hallCounter;
-  lastTick = now;
-  return speed;
 }
 
 void PID_Reset(PID_t *pid)
@@ -663,7 +664,6 @@ void checkSafetyStop(int16_t Y)
       // Phát hiện kẹt - tăng mô-men
       float recoveryPWM = -0.7 * currentAngle;
       updateMotors(recoveryPWM);
-      stuckTimer = currentTime;
     }
     break;
 
@@ -709,7 +709,7 @@ int8_t getDirection(uint8_t last, uint8_t current)
 
 float getMotorAngle(void)
 {
-  return ((float)hallCounter / 45.0f) * 360.0f; // Hoac: hallCounter * 8.0f;
+  return ((float)hallCounter / 90.0f) * 360.0f; // Hoac: hallCounter * 8.0f;
 }
 
 void controlLoop(void)
@@ -721,9 +721,17 @@ void controlLoop(void)
   if (robotStatus.state == NORMAL_OPERATION ||
       robotStatus.state == RECOVERY_IN_PROGRESS)
   {
+    float forwardInput = 0;
+    float turnInput = 0;
+    if (joyStickY <= 100 && joyStickY >= -100)
+    {
+      forwardInput = joyStickY * JOYSTICK_SCALE;
+    }
 
-    float forwardInput = joyStickY * JOYSTICK_SCALE;
-    float turnInput = -joyStickX * JOYSTICK_SCALE;
+    if (joyStickX <= 100 && joyStickX >= -100)
+    {
+      turnInput = -joyStickX * JOYSTICK_SCALE;
+    }
 
     if (robotStatus.state == RECOVERY_IN_PROGRESS)
     {
@@ -829,7 +837,7 @@ void MotorControl(void *argument)
     {
       controlLoop();
     }
-    osDelay(1);
+    osDelay(10);
   }
   /* USER CODE END MotorControl */
 }
@@ -864,6 +872,7 @@ void ReadHall(void *argument)
     // Cap nhat vi tri dong co
     positionOffset = getMotorAngle(); // Gia tri do duoc tu hall sensor
                                       // Tinh sai so vi tri
+		hehe=positionOffset;
     osDelay(1);
   }
   /* USER CODE END ReadHall */
