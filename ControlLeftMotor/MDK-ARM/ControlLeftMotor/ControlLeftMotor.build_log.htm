@@ -28,10 +28,13 @@ Project File Date:  05/19/2025
 *** Using Compiler 'V5.06 update 6 (build 750)', folder: 'D:\Keil_v5\ARM\ARMCC\Bin'
 Build target 'ControlLeftMotor'
 compiling main.c...
+../Core/Src/main.c(117): warning:  #177-D: variable "lastPWM"  was declared but never referenced
+  static float lastPWM = 0;
+../Core/Src/main.c: 1 warning, 0 errors
 linking...
-Program Size: Code=18224 RO-data=532 RW-data=232 ZI-data=8248  
+Program Size: Code=16500 RO-data=532 RW-data=224 ZI-data=8240  
 FromELF: creating hex file...
-"ControlLeftMotor\ControlLeftMotor.axf" - 0 Error(s), 0 Warning(s).
+"ControlLeftMotor\ControlLeftMotor.axf" - 0 Error(s), 1 Warning(s).
 
 <h2>Software Packages used:</h2>
 

@@ -50,30 +50,30 @@ TIM_HandleTypeDef htim1;
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+    .name = "defaultTask",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityNormal,
 };
 /* Definitions for TaskReceiveCAN */
 osThreadId_t TaskReceiveCANHandle;
 const osThreadAttr_t TaskReceiveCAN_attributes = {
-  .name = "TaskReceiveCAN",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityRealtime,
+    .name = "TaskReceiveCAN",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityRealtime,
 };
 /* Definitions for TaskMControl */
 osThreadId_t TaskMControlHandle;
 const osThreadAttr_t TaskMControl_attributes = {
-  .name = "TaskMControl",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+    .name = "TaskMControl",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityNormal,
 };
 /* Definitions for TaskReadHall */
 osThreadId_t TaskReadHallHandle;
 const osThreadAttr_t TaskReadHall_attributes = {
-  .name = "TaskReadHall",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityRealtime,
+    .name = "TaskReadHall",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityRealtime,
 };
 /* USER CODE BEGIN PV */
 // Bien cho truong hop tôi gioi han can bang
@@ -118,7 +118,7 @@ float dt = 0.01; // 10ms
 
 // Lam muot PWM
 static float lastPWM = 0;
-float alphaReducePWM = 0.2f; // Hệ số làm mượt, 0 < alpha < 1 (alpha cang lon thi lam muot cang manh 
+float alphaReducePWM = 0.2f;   // Hệ số làm mượt, 0 < alpha < 1 (alpha cang lon thi lam muot cang manh
 float alphaIncreasePWM = 0.7f; // Hệ số làm mượt, 0 < alpha < 1 (alpha cang lon thi lam muot cang manh)
 // Cac bien toan cuc de luu trang thai hall sensor
 volatile uint8_t currentState = 0;  // Trang thai hien tai cua hall sensor
@@ -133,11 +133,11 @@ volatile uint8_t v = 0;
 volatile uint8_t w = 0;
 uint8_t checkrunFirtTime = 0; // Bien kiem tra lan dau doc Hall sensor
 // CAN
-uint8_t RxData[4] = {0};
+uint8_t RxData[3] = {0};
 volatile int32_t joyStickX = 0, joyStickY = 0;
 CAN_RxHeaderTypeDef RxHeader;
 volatile char *command = "";
-volatile int16_t angleY = 0;
+volatile float angleY = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -152,7 +152,7 @@ void ReadHall(void *argument);
 
 /* USER CODE BEGIN PFP */
 void AutoBalanceOnStartup(void); // Ham tu dong can bang khi khoi dong
-void checkSafetyStop(int16_t Y);
+void checkSafetyStop(float Y);
 void updateMotors(float PWM);
 void controlLoop(void);
 // Ham doc trang thai hall sensor: ghep 3 tin hieu thanh 1 gia tri 3-bit
@@ -176,9 +176,9 @@ void PID_Reset(PID_t *pid); // Ham khoi tao lai PID
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
 
@@ -208,7 +208,7 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-	PID_Position.Kp = 0.0;
+  PID_Position.Kp = 0.0;
   PID_Position.Ki = 0.0;
   PID_Position.Kd = 0.0;
   PID_Pitch.Kp = 12.0;
@@ -291,17 +291,17 @@ int main(void)
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
@@ -315,9 +315,8 @@ void SystemClock_Config(void)
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+   */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
@@ -330,10 +329,10 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief CAN Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief CAN Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_CAN_Init(void)
 {
 
@@ -378,14 +377,13 @@ static void MX_CAN_Init(void)
   HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
   /* USER CODE END CAN_Init 2 */
-
 }
 
 /**
-  * @brief TIM1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief TIM1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_TIM1_Init(void)
 {
 
@@ -402,9 +400,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 3600-1;
+  htim1.Init.Prescaler = 3600 - 1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 1000-1;
+  htim1.Init.Period = 1000 - 1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -453,19 +451,18 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
-
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
+  /* USER CODE BEGIN MX_GPIO_Init_1 */
+  /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -494,13 +491,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(DIR_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : HALL_U_Pin HALL_V_Pin HALL_W_Pin */
-  GPIO_InitStruct.Pin = HALL_U_Pin|HALL_V_Pin|HALL_W_Pin;
+  GPIO_InitStruct.Pin = HALL_U_Pin | HALL_V_Pin | HALL_W_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
+  /* USER CODE BEGIN MX_GPIO_Init_2 */
+  /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
@@ -511,11 +508,11 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
   {
     switch (RxHeader.StdId)
     {
-    case 0x446: // Receive angle data
-      // Ghép 2 byte thành số 16-bit
-      raw_angle = ((int16_t)RxData[2] << 8) | RxData[3];
-      // Chuyển đổi và áp dụng dấu
-      angleY = (RxData[1] ? 1 : -1) * raw_angle;
+    case 0x446: // Nhan goc Y
+      // Ghep 2 byte thanh 1 gia tri 16 bit
+      raw_angle = ((int16_t)RxData[1] << 8) | RxData[2];
+      // Chuyen doi goc Y thanh goc thuc te co dau
+      angleY = (float)raw_angle / 100;
       break;
     case 0x447: // Nhan gia tri joystick X
       // Luu tru gia tri joystick X
@@ -525,7 +522,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
       }
       else
       {
-        joyStickX = RxData[1] ? ((RxData[2] << 8) | RxData[3]) : -((RxData[2] << 8) | RxData[3]);
+        joyStickX = (RxData[1] << 8) | RxData[2];
       }
       if (joyStickX > 100 || joyStickX < -100)
       {
@@ -539,7 +536,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
       }
       else
       {
-        joyStickY = RxData[1] ? ((RxData[2] << 8) | RxData[3]) : -((RxData[2] << 8) | RxData[3]);
+        joyStickY = (RxData[1] << 8) | RxData[2];
       }
       if (joyStickY > 100 || joyStickY < -100)
       {
@@ -560,16 +557,16 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 void updateMotors(float PWM)
 {
   float rawPWM = fminf(fabsf(PWM), MAX_SPEED);
-  float smoothPWM =0;
-	if(lastPWM<rawPWM) 
-		smoothPWM=alphaIncreasePWM > 0 ? (alphaIncreasePWM * rawPWM + (1 - alphaIncreasePWM) * lastPWM) : rawPWM;
-	else
-		smoothPWM=alphaReducePWM > 0 ? (alphaReducePWM* rawPWM + (1 - alphaReducePWM) * lastPWM) : rawPWM;
+  float smoothPWM = 0;
+  if (lastPWM < rawPWM)
+    smoothPWM = alphaIncreasePWM > 0 ? (alphaIncreasePWM * rawPWM + (1 - alphaIncreasePWM) * lastPWM) : rawPWM;
+  else
+    smoothPWM = alphaReducePWM > 0 ? (alphaReducePWM * rawPWM + (1 - alphaReducePWM) * lastPWM) : rawPWM;
   lastPWM = smoothPWM;
 
   HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM < 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
 
-  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,(uint16_t)(smoothPWM + 0.5f));
+  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint16_t)(smoothPWM + 0.5f));
 }
 
 void AutoBalanceOnStartup()
@@ -611,14 +608,14 @@ void PID_Reset(PID_t *pid)
   pid->prevMeasurement = 0;
 }
 
-void checkSafetyStop(int16_t Y)
+void checkSafetyStop(float Y)
 {
   /* if (fabs((float)Y) > 40.0 || !isBalanced)
     {
       updateMotors(0);
       isBalanced = 0; // Reset tr?ng th?i c?n b?ng
     }*/
-  float currentAngle = (float)angleY;
+  float currentAngle = angleY;
   uint32_t currentTime = HAL_GetTick();
 
   switch (robotStatus.state)
@@ -715,7 +712,7 @@ float getMotorAngle(void)
 void controlLoop(void)
 {
   static float speedRight = 0;
-  float currentAngle = (float)angleY;
+  float currentAngle = angleY;
 
   // Chỉ xử lý điều khiển khi ở trạng thái bình thường hoặc đang phục hồi
   if (robotStatus.state == NORMAL_OPERATION ||
@@ -858,11 +855,13 @@ void ReadHall(void *argument)
   {
     // �?c hall sensor
     currentState = readHallState();
-    if(checkrunFirtTime==0){
-			lastHallState = currentState;
-			checkrunFirtTime=1;
-		}else
-			direction=getDirection(lastHallState,currentState);
+    if (checkrunFirtTime == 0)
+    {
+      lastHallState = currentState;
+      checkrunFirtTime = 1;
+    }
+    else
+      direction = getDirection(lastHallState, currentState);
     if (direction != 0)
     {
       hallCounter += direction;
@@ -875,19 +874,20 @@ void ReadHall(void *argument)
 }
 
 /**
-  * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM2 interrupt took place, inside
-  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
-  * a global variable "uwTick" used as application time base.
-  * @param  htim : TIM handle
-  * @retval None
-  */
+ * @brief  Period elapsed callback in non blocking mode
+ * @note   This function is called  when TIM2 interrupt took place, inside
+ * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+ * a global variable "uwTick" used as application time base.
+ * @param  htim : TIM handle
+ * @retval None
+ */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
 
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM2) {
+  if (htim->Instance == TIM2)
+  {
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
@@ -896,9 +896,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -910,14 +910,14 @@ void Error_Handler(void)
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
