@@ -22,3 +22,10 @@ float PID_Compute(PID_t *pid, float setpoint, float measured, float dt)
     pid->prevError = error;
     return pid->Kp * error + pid->Ki * pid->integral + pid->Kd * derivative;
 }
+
+void PID_Reset(PID_t *pid)
+{
+  pid->integral = 0;
+  pid->prevError = 0;
+  pid->prevMeasurement = 0;
+}

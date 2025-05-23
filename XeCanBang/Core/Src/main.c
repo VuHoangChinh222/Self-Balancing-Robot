@@ -531,12 +531,14 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
 {
   // Gửi góc nghiêng
   TxHeader.StdId = 0x446;
-  TxHeader.DLC = 3;
+  TxHeader.DLC = 4;
 
   TxData[0] = 12; // Command "S" for angle
+  TxData[1] = angle >= 0 ? 1 : 0;
+  angle = angle < 0 ? -angle : angle;
   int16_t angle_int = (int16_t)(angle * 100);
-  TxData[1] = (angle_int >> 8) & 0xFF;
-  TxData[2] = angle_int & 0xFF;
+  TxData[2] = (angle_int >> 8) & 0xFF;
+  TxData[3] = angle_int & 0xFF;
 
   if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
   {
@@ -549,12 +551,14 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
   {
     // Gửi giá trị X,Y
     TxHeader.StdId = 0x447;
-    TxHeader.DLC = 3;
+    TxHeader.DLC = 4;
 
     // Gửi X
     TxData[0] = 22; // Command "X" for joystickX
-    TxData[1] = (x >> 8) & 0xFF;
-    TxData[2] = x & 0xFF;
+    TxData[1] = x > 0 ? 1 : 0;
+    x = abs(x);
+    TxData[2] = (x >> 8) & 0xFF;
+    TxData[3] = x & 0xFF;
 
     if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
     {
@@ -567,28 +571,18 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
   if (y <= 100 && y >= -100)
   {
     TxHeader.StdId = 0x448;
-    TxHeader.DLC = 3;
-    TxData[0] = 32; // Command "Y" for joystickY
-    TxData[1] = (y >> 8) & 0xFF;
-    TxData[2] = y & 0xFF;
+    TxHeader.DLC = 4;
+    TxData[0] = 23; // Command "Y" for joystickY
+    TxData[1] = y > 0 ? 1 : 0;
+    y = abs(y);
+    TxData[2] = (y >> 8) & 0xFF;
+    TxData[3] = y & 0xFF;
 
     if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
     {
       HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
       Error_Handler();
     }
-  }
-  osDelay(10);
-  TxHeader.StdId = 0x449;
-  TxHeader.DLC = 3;
-  TxData[0] = 42;
-  int16_t Gx_int = (int16_t)(MPU6050.Gx * 100);
-  TxData[1] = (Gx_int >> 8) & 0xFF;
-  TxData[2] = Gx_int & 0xFF;
-  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
-  {
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    Error_Handler();
   }
 }
 /* USER CODE END 4 */

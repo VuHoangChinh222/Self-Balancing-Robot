@@ -180,6 +180,11 @@
           <WinNumber>1</WinNumber>
           <ItemText>desired_yaw_rate,0x0A</ItemText>
         </Ww>
+        <Ww>
+          <count>6</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>lastPWM,0x0A</ItemText>
+        </Ww>
       </WatchWindow1>
       <WatchWindow2>
         <Ww>
