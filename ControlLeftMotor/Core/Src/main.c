@@ -89,15 +89,9 @@ PID_t PID_Startup;
 uint8_t isBalanced = 0; // Flat kiem tra do can bang
 
 // Thoi gian lay mau
-float dt = 0.01;                                // 10ms
+float dt = 0.01; // 10ms
+uint32_t countTimeForAngleYAsZero = 0;
 #define MAX_TARGET_ANGLE_FROM_POSITION_PID 2.0f // Vi du: +-2 do
-// Lam muot PWM
-volatile float lastPWM = 0;
-// Bien static cho ham updateMotors de xu ly doi chieu muot ma
-// s_motor_active_direction: 0 = dung, 1 = quay thuan (PWM > 0), -1 = quay nguoc (PWM < 0)
-static int8_t s_motor_active_direction = 0;
-#define MIN_PWM_TO_CONSIDER_MOVING 1.0f // Nguong PWM de coi la dong co dang di chuyen
-
 // Cac bien toan cuc de luu trang thai hall sensor
 volatile uint8_t currentState = 0;  // Trang thai hien tai cua hall sensor
 volatile int8_t direction = 0;      // Huong quay cua dong co
@@ -115,7 +109,6 @@ volatile int32_t joyStickX = 0, joyStickY = 0;
 CAN_RxHeaderTypeDef RxHeader;
 volatile char *command = "";
 volatile float angleY = 0;
-float test = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -186,9 +179,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   PID_Position.Kp = 0.05;
-  PID_Position.Ki = 0.01;
-  PID_Position.Kd = 0.0;
-  PID_Pitch.Kp = 8.2;
+  PID_Position.Ki = 0.0;
+  PID_Position.Kd = 0.001;
+  PID_Pitch.Kp = 7.8;
   PID_Pitch.Ki = 0.0;
   PID_Pitch.Kd = 0.3;
   PID_SpeedLeft.Kp = 0.5;
@@ -534,82 +527,6 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
 void updateMotors(float PWM)
 {
-  //  float target_abs_pwm = fminf(fabsf(PWM), MAX_SPEED);
-  //  int8_t desired_direction = 0;
-  //  if (PWM > 0.01f)
-  //    desired_direction = 1;
-  //  else if (PWM < -0.01f)
-  //    desired_direction = -1;
-
-  //  float smoothed_abs_pwm = target_abs_pwm;
-
-  //  // Kiem tra yeu cau doi chieu khi dong co dang chay theo huong nguoc lai
-  //  if (desired_direction != 0 && s_motor_active_direction != 0 && desired_direction != s_motor_active_direction)
-  //  {
-  //    // Dong co dang chay va co yeu cau doi chieu
-  //    if (lastPWM > MIN_PWM_TO_CONSIDER_MOVING)
-  //    {
-  //      // Dong co dang chay voi toc do dang ke, can giam toc truoc khi doi chieu
-  //      // Muc tieu PWM trong chu ky nay la 0 de giam toc
-  //      if (smoothed_abs_pwm < MIN_PWM_TO_CONSIDER_MOVING)
-  //      {
-  //        // Da giam toc du thap, an toan de doi chieu DIR
-  //        lastPWM = 0.0f;                                  // Dat lai lastPWM ve 0
-  //        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0); // Xuat PWM = 0 trong chu ky nay
-
-  //        s_motor_active_direction = desired_direction; // Cap nhat huong moi
-  //        HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, (s_motor_active_direction == 1) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-  //        // Ham se return, chu ky tiep theo se bat dau tang toc tu lastPWM = 0 theo huong moi
-  //        return;
-  //      }
-  //      else
-  //      {
-  //        // Van dang trong qua trinh giam toc
-  //        lastPWM = smoothed_abs_pwm;
-  //        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint16_t)(lastPWM + 0.5f));
-  //        // Chua doi chieu DIR, giu nguyen huong hien tai
-  //        return;
-  //      }
-  //    }
-  //    else
-  //    {
-  //      // Dong co chay rat cham hoac da dung, co the doi chieu DIR ngay
-  //      lastPWM = 0.0f; // Reset lastPWM de bat dau tang toc tu 0
-  //      s_motor_active_direction = desired_direction;
-  //      HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, (s_motor_active_direction == 1) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-  //      // Tiep tuc xuong logic lam muot PWM de tang toc
-  //    }
-  //  }
-  //  // Khoi dong tu trang thai dung hoac khi PWM muc tieu la 0
-  //  else if (desired_direction != 0 && s_motor_active_direction == 0)
-  //  {
-  //    // Bat dau tu trang thai dung, dat chieu DIR
-  //    s_motor_active_direction = desired_direction;
-  //    HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, (s_motor_active_direction == 1) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-  //    // lastPWM nen la 0 hoac gan 0, se tang toc
-  //  }
-
-  //  lastPWM = smoothed_abs_pwm;
-
-  //  // Xuat PWM ra timer
-  //  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint16_t)(lastPWM + 0.5f));
-
-  //  // Cap nhat trang thai s_motor_active_direction neu dong co dung lai
-  //  if (desired_direction == 0 && lastPWM < MIN_PWM_TO_CONSIDER_MOVING)
-  //  {
-  //    s_motor_active_direction = 0;
-  //    // Neu PWM muc tieu la 0 va lastPWM da rat thap, dam bao PWM ra la 0
-  //    if (fabsf(PWM) < 0.01f)
-  //    {
-  //      __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
-  //      lastPWM = 0.0f;
-  //    }
-  //  }
-  //  else
-  //  {
-  //    // Neu desired_direction != 0, s_motor_active_direction da duoc dat o tren
-  //  }
-
   float target_abs_pwm = fminf(fabsf(PWM), MAX_SPEED);
   HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM > 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)fabsf(target_abs_pwm));
@@ -682,12 +599,17 @@ void controlLoop(void)
   // static float speedLeft = 0; // Bien nay duong nhu khong duoc su dung trong logic joystick hien tai
   float currentAngle = angleY;
   float targetAngleForPitch = 0.0f; // Mac dinh goc nghieng muc tieu la 0
+
   if (currentAngle < -45 || currentAngle > 45)
   {
     updateMotors(0);
+  }
+  else if (currentAngle > -1 && currentAngle < -1 && (HAL_GetTick() - countTimeForAngleYAsZero >= 2000))
+  {
     PID_Reset(&PID_Pitch);
     PID_Reset(&PID_Position);
     PID_Reset(&PID_SpeedLeft);
+    countTimeForAngleYAsZero = HAL_GetTick();
   }
   else
   {
@@ -744,7 +666,6 @@ void controlLoop(void)
 
       finalPwm += speedControlPwm;
     }
-    test = finalPwm;
     updateMotors(finalPwm);
   }
 }
