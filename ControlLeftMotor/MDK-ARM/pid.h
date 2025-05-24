@@ -1,0 +1,17 @@
+#ifndef PID_H
+#define PID_H
+#define PID_INTEGRAL_LIMIT 200.0   // Gioi han tich phan
+#define PID_DERIVATIVE_LIMIT 50.0 // Gioi han dao ham
+typedef struct
+{
+  float Kp;
+  float Ki;
+  float Kd;
+  float prevMeasurement;
+  float prevError;
+  float integral;
+} PID_t;
+
+float PID_Compute(PID_t *pid, float setpoint, float measured, float dt);
+void PID_Reset(PID_t *pid); // Ham khoi tao lai PID
+#endif
