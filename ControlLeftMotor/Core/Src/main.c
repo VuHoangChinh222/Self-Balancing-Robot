@@ -81,7 +81,7 @@ const osThreadAttr_t TaskReadHall_attributes = {
 
 PID_t PID_Position, PID_SpeedLeft;
 
-#define CONTROL_DT 0.002f // 2 ms
+#define CONTROL_DT 0.001f // 1 ms
 #define MAX_SPEED_COMMAND 100.0f
 #define JOYSTICK_DEADZONE 5.0f
 //--------------------------------------
@@ -683,63 +683,60 @@ void controlLoop(void)
   float currentGyro = gyroY;
   ComputeMotorSpeed();
 
-  // Chỉ điều khiển khi robot trong khoảng an toàn
   if (currentAngle > -40 && currentAngle < 40)
   {
     int32_t currentSpeed = motorSpeedRPS * COUNTS_PER_REV;
     int32_t currentPosition = hallCounter;
     float velocity_target = 0;
+    float speed_cmd = 0;
 
     static int32_t holdPosition = 0;
     static uint8_t isHolding = 0;
 
-    // Nếu có tín hiệu joystick Y thì điều khiển theo vận tốc, không giữ vị trí
+    // Nếu có tín hiệu joystick Y -> sử dụng PID tốc độ
     if (fabsf((float_t)joyStickY) > JOYSTICK_DEADZONE && fabsf((float_t)joyStickY) < 100)
     {
+      // Sử dụng PID tốc độ
       velocity_target = (joyStickY / 100.0f) * MAX_SPEED_COMMAND;
-      isHolding = 0; // Không giữ vị trí khi có lệnh
+      speed_cmd = PID_Compute(&PID_SpeedLeft, velocity_target, currentSpeed, CONTROL_DT);
+      isHolding = 0;
     }
     else
     {
-      // Nếu không có tín hiệu joystick, nhớ vị trí hiện tại và giữ vị trí
+      // Không có tín hiệu joystick -> sử dụng PID vị trí
       if (!isHolding)
       {
         holdPosition = currentPosition;
         isHolding = 1;
       }
-      velocity_target = PID_Compute(&PID_Position, holdPosition, currentPosition, CONTROL_DT);
+      speed_cmd = PID_Compute(&PID_Position, holdPosition, currentPosition, CONTROL_DT);
     }
 
-    // Điều khiển tốc độ (nếu cần mượt hơn, có thể bỏ tầng này)
-    float speed_feedback = currentSpeed;
-    float speed_cmd = PID_Compute(&PID_SpeedLeft, velocity_target, speed_feedback, CONTROL_DT);
-
-    // Điều khiển cân bằng sử dụng cả góc và tốc độ góc (PD)
+    // Điều khiển cân bằng
     float base_Kp = 24.0f;
     float base_Kd = 0.8f;
     float Kp = base_Kp;
     float Kd = base_Kd;
+
     // Phát hiện chuyển động đột ngột
     if (fabsf(currentGyro) > MAX_GYRO_RATE)
     {
-      // Giảm Kp và tăng Kd để ổn định
       Kp = base_Kp * RECOVERY_KP_SCALE;
       Kd = base_Kd * RECOVERY_KD_SCALE;
     }
+
     // Điều chỉnh hệ số theo góc nghiêng
     if (fabsf(currentAngle) < 10.0f)
     {
-      // Giảm độ nhạy khi gần vị trí cân bằng
       Kp *= 0.9f;
       Kd *= 1.3f;
     }
+
     float balance_cmd = Kp * currentAngle + Kd * currentGyro;
-    // Kết hợp điều khiển cân bằng và tốc độ
-    // float pwm_output = -balance_cmd + speed_cmd;
-    float pwm_output = -balance_cmd;
+    float pwm_output = -balance_cmd + speed_cmd; // Thêm speed_cmd vào đây
     pwm_output = ClampPWM(pwm_output);
 
-    // Điều khiển quay (turn) nếu có joystick X
+    // Xử lý joystick X nếu có
     float turn_adjust = (fabsf((float_t)joyStickX) < 100) ? (joyStickX / 100.0f) * fabsf(pwm_output) : 0;
     float pwm_left = pwm_output + turn_adjust;
 
@@ -750,7 +747,7 @@ void controlLoop(void)
   }
   else
   {
-    updateMotors(0); // Nếu vượt quá góc an toàn, dừng động cơ
+    updateMotors(0);
   }
 }
 /* USER CODE END 4 */

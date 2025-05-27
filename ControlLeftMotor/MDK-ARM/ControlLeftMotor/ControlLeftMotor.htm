@@ -3,7 +3,7 @@
 <title>Static Call Graph - [ControlLeftMotor\ControlLeftMotor.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image ControlLeftMotor\ControlLeftMotor.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060750: Last Updated: Tue May 27 20:30:22 2025
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060750: Last Updated: Tue May 27 22:48:16 2025
 <BR><P>
 <H3>Maximum Stack Usage =        240 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
@@ -831,7 +831,7 @@ Global Symbols
 <BR>[Address Reference Count : 1]<UL><LI> startup_stm32f103xb.o(RESET)
 </UL>
 <P><STRONG><a name="[3c]"></a>MotorControl</STRONG> (Thumb, 12 bytes, Stack size 0 bytes, main.o(i.MotorControl))
-<BR><BR>[Stack]<UL><LI>Max Depth = 88 + In Cycle
+<BR><BR>[Stack]<UL><LI>Max Depth = 96 + In Cycle
 <LI>Call Chain = MotorControl &rArr;  MotorControl (Cycle)
 </UL>
 <BR>[Calls]<UL><LI><a href="#[99]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;osDelay
@@ -966,8 +966,8 @@ Global Symbols
 </UL>
 <BR>[Address Reference Count : 1]<UL><LI> startup_stm32f103xb.o(RESET)
 </UL>
-<P><STRONG><a name="[98]"></a>controlLoop</STRONG> (Thumb, 334 bytes, Stack size 32 bytes, main.o(i.controlLoop))
-<BR><BR>[Stack]<UL><LI>Max Depth = 88<LI>Call Chain = controlLoop &rArr; PID_Compute &rArr; fminf &rArr; __ARM_fcmp4
+<P><STRONG><a name="[98]"></a>controlLoop</STRONG> (Thumb, 342 bytes, Stack size 40 bytes, main.o(i.controlLoop))
+<BR><BR>[Stack]<UL><LI>Max Depth = 96<LI>Call Chain = controlLoop &rArr; PID_Compute &rArr; fminf &rArr; __ARM_fcmp4
 </UL>
 <BR>[Calls]<UL><LI><a href="#[9a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;PID_Compute
 <LI><a href="#[ab]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;updateMotors
@@ -978,6 +978,7 @@ Global Symbols
 <LI><a href="#[5c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_i2f
 <LI><a href="#[a9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_f2iz
 <LI><a href="#[5d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_fdiv
+<LI><a href="#[9b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_fsub
 <LI><a href="#[9c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_fadd
 </UL>
 <BR>[Called By]<UL><LI><a href="#[3c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;MotorControl
@@ -1639,6 +1640,7 @@ Global Symbols
 <BR><BR>[Stack]<UL><LI>Max Depth = 16<LI>Call Chain = __aeabi_fsub
 </UL>
 <BR>[Called By]<UL><LI><a href="#[9a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;PID_Compute
+<LI><a href="#[98]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;controlLoop
 </UL>
 
 <P><STRONG><a name="[ff]"></a>_fsub</STRONG> (Thumb, 234 bytes, Stack size 16 bytes, faddsub_clz.o(x$fpl$fsub), UNUSED)
