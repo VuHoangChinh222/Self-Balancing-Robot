@@ -29,3 +29,12 @@ controlrightmotor\stm32f1xx_it.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_
 controlrightmotor\stm32f1xx_it.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
 controlrightmotor\stm32f1xx_it.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
 controlrightmotor\stm32f1xx_it.o: ../Core/Inc/stm32f1xx_it.h
+controlrightmotor\stm32f1xx_it.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h
+controlrightmotor\stm32f1xx_it.o: ../Core/Inc/FreeRTOSConfig.h
+controlrightmotor\stm32f1xx_it.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/projdefs.h
+controlrightmotor\stm32f1xx_it.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/portable.h
+controlrightmotor\stm32f1xx_it.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/deprecated_definitions.h
+controlrightmotor\stm32f1xx_it.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3/portmacro.h
+controlrightmotor\stm32f1xx_it.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h
+controlrightmotor\stm32f1xx_it.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h
+controlrightmotor\stm32f1xx_it.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h
