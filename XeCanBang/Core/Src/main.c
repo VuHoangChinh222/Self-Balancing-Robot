@@ -546,7 +546,7 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
     Error_Handler();
   }
 
-  osDelay(10); // Delay nhỏ giữa các lần gửi
+  osDelay(1); // Delay nhỏ giữa các lần gửi
   if (x <= 100 && x >= -100)
   {
     // Gửi giá trị X,Y
@@ -566,7 +566,7 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
       Error_Handler();
     }
   }
-  osDelay(10);
+  osDelay(1);
   // Gửi giá trị Y
   if (y <= 100 && y >= -100)
   {
@@ -583,6 +583,21 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
       HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
       Error_Handler();
     }
+  }
+	osDelay(1);
+	TxHeader.StdId=0x449;
+	TxHeader.DLC=4;
+	TxData[0]=42;
+	float gyroY=MPU6050.Gy;
+	TxData[1] = gyroY >= 0 ? 1 : 0;
+  gyroY = gyroY < 0 ? -gyroY : gyroY;
+  int16_t gyroY_int = (int16_t)(gyroY * 100);
+  TxData[2] = (gyroY_int >> 8) & 0xFF;
+  TxData[3] = gyroY_int & 0xFF;
+	if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+  {
+		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    Error_Handler();
   }
 }
 /* USER CODE END 4 */

@@ -168,27 +168,22 @@
         <Ww>
           <count>3</count>
           <WinNumber>1</WinNumber>
-          <ItemText>velocity,0x0A</ItemText>
+          <ItemText>pwm_left_filtered,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>4</count>
           <WinNumber>1</WinNumber>
-          <ItemText>desired_velocity,0x0A</ItemText>
+          <ItemText>joyStickX,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>5</count>
           <WinNumber>1</WinNumber>
-          <ItemText>desired_yaw_rate,0x0A</ItemText>
+          <ItemText>joyStickY,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>6</count>
           <WinNumber>1</WinNumber>
-          <ItemText>lastPWM,0x0A</ItemText>
-        </Ww>
-        <Ww>
-          <count>7</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>test,0x0A</ItemText>
+          <ItemText>gyroY,0x0A</ItemText>
         </Ww>
       </WatchWindow1>
       <WatchWindow2>

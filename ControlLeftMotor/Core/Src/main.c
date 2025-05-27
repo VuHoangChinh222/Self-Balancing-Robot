@@ -79,19 +79,27 @@ const osThreadAttr_t TaskReadHall_attributes = {
 
 //------------------------------------
 
-PID_t PID_Position, PID_Pitch, PID_SpeedLeft;
+PID_t PID_Position, PID_SpeedLeft;
 
-#define MAX_SPEED 1000
-#define MAX_TURN_RATE 0.5f    // He so quay toi da
-#define JOYSTICK_SCALE 0.001f // Scale [-100,100] -> [-1,1]
-// Them PID tam thoi cho khoi dong
-PID_t PID_Startup;
-uint8_t isBalanced = 0; // Flat kiem tra do can bang
-
-// Thoi gian lay mau
-float dt = 0.01; // 10ms
-uint32_t countTimeForAngleYAsZero = 0;
-#define MAX_TARGET_ANGLE_FROM_POSITION_PID 2.0f // Vi du: +-2 do
+#define CONTROL_DT 0.002f // 2 ms
+#define MAX_SPEED_COMMAND 100.0f
+#define JOYSTICK_DEADZONE 5.0f
+//--------------------------------------
+#define MAX_GYRO_RATE 150.0f   // Giới hạn tốc độ góc tối đa
+#define RECOVERY_KP_SCALE 0.7f // Hệ số giảm Kp khi phát hiện giật
+#define RECOVERY_KD_SCALE 1.5f // Hệ số tăng Kd khi phát hiện giật
+//--------------------------------------
+#define BASE_PWM_FILTER_ALPHA 0.6f // Hệ số làm mượt cơ bản
+#define FAST_PWM_FILTER_ALPHA 0.9f // Hệ số làm mượt khi góc lớn
+#define ANGLE_THRESHOLD 5.0f       // Ngưỡng góc để thay đổi hệ số
+#define MAX_PWM_CHANGE 50.0f       // Giới hạn thay đổi PWM mỗi chu kỳ
+//-----------------------------------
+#define MAX_PWM_OUTPUT 999.0f
+#define COUNTS_PER_REV 90.0f         // 90 bước tương ứng 1 vòng quay
+volatile float motorSpeedRPS = 0.0f; // tốc độ động cơ, revs per second
+volatile float motorSpeedDPS = 0.0f; // tốc độ động cơ, degrees per second
+//  == == PWM State == ==
+float pwm_left_filtered = 0.0f;
 // Cac bien toan cuc de luu trang thai hall sensor
 volatile uint8_t currentState = 0;  // Trang thai hien tai cua hall sensor
 volatile int8_t direction = 0;      // Huong quay cua dong co
@@ -109,6 +117,7 @@ volatile int32_t joyStickX = 0, joyStickY = 0;
 CAN_RxHeaderTypeDef RxHeader;
 volatile char *command = "";
 volatile float angleY = 0;
+volatile float gyroY = 0; // Gy MPU6050 (don vi: deg/s)
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -122,7 +131,6 @@ void MotorControl(void *argument);
 void ReadHall(void *argument);
 
 /* USER CODE BEGIN PFP */
-void AutoBalanceOnStartup(void); // Ham tu dong can bang khi khoi dong
 void updateMotors(float PWM);
 void controlLoop(void);
 // Ham doc trang thai hall sensor: ghep 3 tin hieu thanh 1 gia tri 3-bit
@@ -137,6 +145,11 @@ int8_t getDirection(uint8_t last, uint8_t current);
 float getMotorAngle(void);
 // Ham nhan tin hieu CAN va xu ly CAN
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
+// ==== PWM Smoothing ====
+float SmoothPWM(float prev, float target);
+// ==== Clamp PWM Output ====
+float ClampPWM(float pwm);
+void ComputeMotorSpeed(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -158,7 +171,6 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -178,21 +190,12 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  PID_Position.Kp = 0.05;
-  PID_Position.Ki = 0.0;
-  PID_Position.Kd = 0.001;
-  PID_Pitch.Kp = 7.8;
-  PID_Pitch.Ki = 0.0;
-  PID_Pitch.Kd = 0.3;
-  PID_SpeedLeft.Kp = 0.5;
-  PID_SpeedLeft.Ki = 0.0;
-  PID_SpeedLeft.Kd = 0.005;
-  // PID cho giai doan khoi dong
-  PID_Startup.Kp = 10;
-  PID_Startup.Ki = 0.0;
-  PID_Startup.Kd = 1.2;
-  PID_Startup.integral = 0;  // Khoi tao tich phan
-  PID_Startup.prevError = 0; // Khoi tao gia tri sai so truoc
+  PID_Position.Kp = 1.5;
+  PID_Position.Ki = 0.04;
+  PID_Position.Kd = 0.0;
+  PID_SpeedLeft.Kp = 2.0;
+  PID_SpeedLeft.Ki = 0.02;
+  PID_SpeedLeft.Kd = 0.1;
   // Bat yeu cau ngat khi du lieu CAN nhan ve duoc luu tru goi tin o FIFO1 khi dung ID
   if (HAL_CAN_Start(&hcan) != HAL_OK)
   {
@@ -446,6 +449,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(BREAK_GPIO_Port, BREAK_Pin, GPIO_PIN_SET);
+
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -453,12 +459,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : DIR_Pin */
-  GPIO_InitStruct.Pin = DIR_Pin;
+  /*Configure GPIO pins : DIR_Pin BREAK_Pin */
+  GPIO_InitStruct.Pin = DIR_Pin | BREAK_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(DIR_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : HALL_U_Pin HALL_V_Pin HALL_W_Pin */
   GPIO_InitStruct.Pin = HALL_U_Pin | HALL_V_Pin | HALL_W_Pin;
@@ -474,6 +480,7 @@ static void MX_GPIO_Init(void)
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
   int16_t raw_angle = 0;
+  int16_t raw_gyroY = 0;
   if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
   {
     switch (RxHeader.StdId)
@@ -514,6 +521,11 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
         joyStickY = 0;
       }
       break;
+    case 0x449: // Nhan gia tri gyro Y
+      raw_gyroY = ((int16_t)RxData[2] << 8) | RxData[3];
+      raw_gyroY = (RxData[1] ? 1 : -1) * raw_gyroY; // Chuyen doi goc Y thanh goc thuc te co dau
+      gyroY = (float)raw_gyroY / 100;
+      break;
     default:
       Error_Handler();
       break;
@@ -527,32 +539,9 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
 void updateMotors(float PWM)
 {
-  float target_abs_pwm = fminf(fabsf(PWM), MAX_SPEED);
+  float target_abs_pwm = fminf(fabsf(PWM), MAX_PWM_OUTPUT);
   HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM > 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
   __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)fabsf(target_abs_pwm));
-}
-
-void AutoBalanceOnStartup()
-{
-  const float targetAngle = 0.0; // Goc muc tieu
-  const float tolerance = 1.0;   // Sai so cho phep (+-1 do)
-
-  while (!isBalanced) // Vong lap cho den khi can bang
-  {
-    float y = angleY;
-    float error = targetAngle - y;
-    float output = PID_Compute(&PID_Startup, targetAngle, y, dt);
-    // Cap nhat dong co
-    float motor_balance = 1.0 + (y * 0.05); // Hieu chinh theo huong nghien
-    updateMotors(output * motor_balance);
-    // Kiem tra dieu kien can bang
-    if (fabs(error) < tolerance)
-    {
-      isBalanced = 1;
-      break;
-    }
-    HAL_Delay(10);
-  }
 }
 
 uint8_t readHallState(void)
@@ -594,79 +583,174 @@ float getMotorAngle(void)
   return ((float)hallCounter / 90.0f) * 360.0f; // Hoac: hallCounter * 8.0f;
 }
 
-void controlLoop(void)
+// ==== Clamp PWM Output ====
+float ClampPWM(float pwm)
 {
-  // static float speedLeft = 0; // Bien nay duong nhu khong duoc su dung trong logic joystick hien tai
-  float currentAngle = angleY;
-  float targetAngleForPitch = 0.0f; // Mac dinh goc nghieng muc tieu la 0
+  if (pwm > MAX_PWM_OUTPUT)
+    return MAX_PWM_OUTPUT;
+  if (pwm < -MAX_PWM_OUTPUT)
+    return -MAX_PWM_OUTPUT;
+  return pwm;
+}
 
-  if (currentAngle < -45 || currentAngle > 45)
+// ==== PWM Smoothing ====
+// float SmoothPWM(float prev, float target)
+// {
+//   float currentAngle = angleY;
+//   float currentGyro = gyroY;
+//   float alpha;
+
+//   // Điều chỉnh hệ số làm mượt
+//   if (fabsf(currentAngle) > ANGLE_THRESHOLD)
+//   {
+//     alpha = FAST_PWM_FILTER_ALPHA;
+//   }
+//   else
+//   {
+//     alpha = BASE_PWM_FILTER_ALPHA;
+//   }
+
+//   // Giới hạn tốc độ thay đổi PWM
+//   float delta = target - prev;
+//   if (delta > MAX_PWM_CHANGE)
+//     delta = MAX_PWM_CHANGE;
+//   if (delta < -MAX_PWM_CHANGE)
+//     delta = -MAX_PWM_CHANGE;
+
+//   // Giảm alpha nếu phát hiện tốc độ góc cao
+//   if (fabsf(currentGyro) > MAX_GYRO_RATE)
+//   {
+//     alpha *= 0.5f;
+//   }
+
+//   return prev + alpha * delta;
+// }
+float SmoothPWM(float prev, float target)
+{
+  float currentAngle = angleY;
+  float currentGyro = gyroY;
+  float alpha = 0;
+  float max_change = 0;
+
+  // Điều chỉnh giới hạn thay đổi PWM theo góc nghiêng
+  if (fabsf(currentAngle) > 30.0f)
   {
-    updateMotors(0);
+    max_change = MAX_PWM_CHANGE * 4.0f; // Tăng giới hạn nhiều hơn
+    alpha = 1.0f;                       // Không làm mượt ở góc lớn
   }
-  else if (currentAngle > -1 && currentAngle < -1 && (HAL_GetTick() - countTimeForAngleYAsZero >= 2000))
+  else if (fabsf(currentAngle) > 15.0f)
   {
-    PID_Reset(&PID_Pitch);
-    PID_Reset(&PID_Position);
-    PID_Reset(&PID_SpeedLeft);
-    countTimeForAngleYAsZero = HAL_GetTick();
+    max_change = MAX_PWM_CHANGE * 3.0f;
+    alpha = FAST_PWM_FILTER_ALPHA;
+  }
+  else if (fabsf(currentAngle) > 5.0f)
+  {
+    max_change = MAX_PWM_CHANGE * 2.0f;
+    alpha = (BASE_PWM_FILTER_ALPHA + FAST_PWM_FILTER_ALPHA) / 2;
   }
   else
   {
-    float forwardInput = 0;
-    float turnInput = 0;
+    max_change = MAX_PWM_CHANGE;
+    alpha = BASE_PWM_FILTER_ALPHA;
+  }
 
-    if (joyStickY <= 100 && joyStickY >= -100)
+  float delta = target - prev;
+  if (delta > max_change)
+    delta = max_change;
+  if (delta < -max_change)
+    delta = -max_change;
+
+  return prev + alpha * delta;
+}
+/* Hàm tính tốc độ động cơ — gọi mỗi khi controlLoop chạy */
+void ComputeMotorSpeed(void)
+{
+  static int32_t lastHallCount = 0;
+  int32_t deltaCount = hallCounter - lastHallCount;
+
+  // 1) Tính rev/s (revolutions per second)
+  motorSpeedRPS = (deltaCount / COUNTS_PER_REV) / CONTROL_DT;
+
+  // 2) Nếu muốn độ/giây (degrees per second)
+  motorSpeedDPS = (deltaCount * 360.0f / COUNTS_PER_REV) / CONTROL_DT;
+
+  // Cập nhật cho lần sau
+  lastHallCount = hallCounter;
+}
+void controlLoop(void)
+{
+  float currentAngle = angleY;
+  float currentGyro = gyroY;
+  ComputeMotorSpeed();
+
+  // Chỉ điều khiển khi robot trong khoảng an toàn
+  if (currentAngle > -40 && currentAngle < 40)
+  {
+    int32_t currentSpeed = motorSpeedRPS * COUNTS_PER_REV;
+    int32_t currentPosition = hallCounter;
+    float velocity_target = 0;
+
+    static int32_t holdPosition = 0;
+    static uint8_t isHolding = 0;
+
+    // Nếu có tín hiệu joystick Y thì điều khiển theo vận tốc, không giữ vị trí
+    if (fabsf((float_t)joyStickY) > JOYSTICK_DEADZONE && fabsf((float_t)joyStickY) < 100)
     {
-      forwardInput = joyStickY * JOYSTICK_SCALE;
+      velocity_target = (joyStickY / 100.0f) * MAX_SPEED_COMMAND;
+      isHolding = 0; // Không giữ vị trí khi có lệnh
     }
-    if (joyStickX <= 100 && joyStickX >= -100)
+    else
     {
-      turnInput = -joyStickX * JOYSTICK_SCALE;
+      // Nếu không có tín hiệu joystick, nhớ vị trí hiện tại và giữ vị trí
+      if (!isHolding)
+      {
+        holdPosition = currentPosition;
+        isHolding = 1;
+      }
+      velocity_target = PID_Compute(&PID_Position, holdPosition, currentPosition, CONTROL_DT);
     }
 
-    // Tinh toan targetAngleForPitch tu PID_Position (khi khong co dieu khien joystick)
-    if (!(fabs(forwardInput) > 0.01f || fabs(turnInput) > 0.01f)) // Neu KHONG co dieu khien joystick
+    // Điều khiển tốc độ (nếu cần mượt hơn, có thể bỏ tầng này)
+    float speed_feedback = currentSpeed;
+    float speed_cmd = PID_Compute(&PID_SpeedLeft, velocity_target, speed_feedback, CONTROL_DT);
+
+    // Điều khiển cân bằng sử dụng cả góc và tốc độ góc (PD)
+    float base_Kp = 24.0f;
+    float base_Kd = 0.8f;
+    float Kp = base_Kp;
+    float Kd = base_Kd;
+    // Phát hiện chuyển động đột ngột
+    if (fabsf(currentGyro) > MAX_GYRO_RATE)
     {
-      float positionError = 0 - hallCounter; // Muc tieu la hallCounter = 0
-      targetAngleForPitch = PID_Compute(&PID_Position, 0.0f, positionError, dt);
-      // Gioi han goc nghieng muc tieu de tranh robot nghieng qua nhieu gay mat thang bang
-      targetAngleForPitch = fminf(fmaxf(targetAngleForPitch, -MAX_TARGET_ANGLE_FROM_POSITION_PID), MAX_TARGET_ANGLE_FROM_POSITION_PID);
+      // Giảm Kp và tăng Kd để ổn định
+      Kp = base_Kp * RECOVERY_KP_SCALE;
+      Kd = base_Kd * RECOVERY_KD_SCALE;
     }
-    // Neu co dieu khien joystick, targetAngleForPitch se mac dinh la 0 (robot se co gang dung thang khi di chuyen)
-    // Hoac ban co the them logic de joystick cung tao ra mot targetAngleForPitch nho neu muon.
-
-    // Vong lap PID ben trong: Dieu khien goc nghieng
-    float balanceTorque = PID_Compute(&PID_Pitch, targetAngleForPitch, currentAngle, dt);
-
-    float finalPwm = balanceTorque;
-
-    // Xu ly dieu khien joystick (neu co)
-    // Logic joystick hien tai cua ban tinh ra pwmLeft, co the can xem xet lai cach ket hop
-    // voi balanceTorque. Mot cach la joystick se dieu chinh toc do/vi tri muc tieu cho
-    // vong lap ngoai, hoac them mot thanh phan PWM nho vao finalPwm.
-    // Tam thoi, neu co joystick, se uu tien logic joystick cua ban.
-    if (fabs(forwardInput) > 0.01f || fabs(turnInput) > 0.01f) // Neu co dieu khien joystick
+    // Điều chỉnh hệ số theo góc nghiêng
+    if (fabsf(currentAngle) < 10.0f)
     {
-      // Logic dieu khien joystick cua ban (can xem xet lai cach ket hop)
-      // Hien tai, no tinh speedLeftOutput va cong vao balanceTorque.
-      // Co the targetSpeedLeft nen la dau vao cho mot bo PID toc do rieng,
-      // hoac dau ra cua PID_Position.
-      // De don gian, tam thoi giu nguyen logic cua ban khi co joystick,
-      // nhung targetAngleForPitch cho PID_Pitch se la 0.
-      float targetSpeedLeft = forwardInput;
-      targetSpeedLeft += turnInput * MAX_TURN_RATE;
-      targetSpeedLeft = fminf(fmaxf(targetSpeedLeft, -1.0f), 1.0f);
-
-      // Bien speedLeft nen duoc cap nhat hoac la dau ra cua mot cam bien toc do thuc te
-      // Neu khong, PID_SpeedLeft se khong hoat dong dung nhu mong doi.
-      // Gia su speedLeft la toc do hien tai (can co cam bien hoac uoc luong)
-      float currentSpeedApproximation = 0; // CAN THAY THE BANG TOC DO THUC TE HOAC UOC LUONG
-      float speedControlPwm = PID_Compute(&PID_SpeedLeft, targetSpeedLeft, currentSpeedApproximation, dt) * MAX_SPEED;
-
-      finalPwm += speedControlPwm;
+      // Giảm độ nhạy khi gần vị trí cân bằng
+      Kp *= 0.9f;
+      Kd *= 1.3f;
     }
-    updateMotors(finalPwm);
+    float balance_cmd = Kp * currentAngle + Kd * currentGyro;
+    // Kết hợp điều khiển cân bằng và tốc độ
+    // float pwm_output = -balance_cmd + speed_cmd;
+    float pwm_output = -balance_cmd;
+    pwm_output = ClampPWM(pwm_output);
+
+    // Điều khiển quay (turn) nếu có joystick X
+    float turn_adjust = (fabsf((float_t)joyStickX) < 100) ? (joyStickX / 100.0f) * fabsf(pwm_output) : 0;
+    float pwm_left = pwm_output + turn_adjust;
+
+    pwm_left_filtered = SmoothPWM(pwm_left_filtered, pwm_left);
+    pwm_left_filtered = ClampPWM(pwm_left_filtered);
+
+    updateMotors(pwm_left_filtered);
+  }
+  else
+  {
+    updateMotors(0); // Nếu vượt quá góc an toàn, dừng động cơ
   }
 }
 /* USER CODE END 4 */
@@ -720,16 +804,8 @@ void MotorControl(void *argument)
   /* Infinite loop */
   for (;;)
   {
-    if (!isBalanced)
-    {
-      // Tu dong can bang khi khoi dong
-      AutoBalanceOnStartup();
-    }
-    else
-    {
-      controlLoop();
-    }
-    osDelay(10);
+    controlLoop();
+    osDelay(1);
   }
   /* USER CODE END MotorControl */
 }
