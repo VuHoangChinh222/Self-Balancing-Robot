@@ -142,7 +142,7 @@ CAN_TxHeaderTypeDef TxHeader = {
 uint8_t TxData[4];
 uint32_t TxMailbox;
 
-#define UART_TIMEOUT 100
+#define UART_TIMEOUT 2000
 /* USER CODE END 0 */
 
 /**
@@ -443,7 +443,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 921600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -650,7 +650,6 @@ void StartTask02(void *argument)
           int16_t y = atoi(y_str + 2);
           x = x > 100 ? 100 : (x < -100 ? -100 : x);
           y = y > 100 ? 100 : (y < -100 ? -100 : y);
-
           osMutexAcquire(joystickMutexHandle, osWaitForever);
           joystickData.x = x;
           joystickData.y = y;

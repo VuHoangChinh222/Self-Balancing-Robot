@@ -96,7 +96,7 @@ PID_t PID_Position, PID_SpeedLeft;
 #define BASE_PWM_FILTER_ALPHA 0.6f // Hệ số làm mượt cơ bản
 #define FAST_PWM_FILTER_ALPHA 0.9f // Hệ số làm mượt khi góc lớn
 #define ANGLE_THRESHOLD 5.0f       // Ngưỡng góc để thay đổi hệ số
-#define MAX_PWM_CHANGE 50.0f       // Giới hạn thay đổi PWM mỗi chu kỳ
+#define MAX_PWM_CHANGE 30.0f       // Giới hạn thay đổi PWM mỗi chu kỳ
 //-----------------------------------
 #define MAX_PWM_OUTPUT 999.0f
 #define COUNTS_PER_REV 90.0f         // 90 bước tương ứng 1 vòng quay
@@ -194,12 +194,12 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  PID_Position.Kp = 5.0;
-  PID_Position.Ki = 0.01;
-  PID_Position.Kd = 0.5;
-  PID_SpeedLeft.Kp = 2.0;
-  PID_SpeedLeft.Ki = 0.02;
-  PID_SpeedLeft.Kd = 0.1;
+  PID_Position.Kp = 2.0;
+  PID_Position.Ki = 0.0;
+  PID_Position.Kd = 0.0;
+  PID_SpeedLeft.Kp = 1.0;
+  PID_SpeedLeft.Ki = 0.0;
+  PID_SpeedLeft.Kd = 0.0;
   // Bat yeu cau ngat khi du lieu CAN nhan ve duoc luu tru goi tin o FIFO1 khi dung ID
   if (HAL_CAN_Start(&hcan) != HAL_OK)
   {

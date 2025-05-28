@@ -1,4 +1,4 @@
-/* * Data converted from D:/iotc/app1/esp32-cam-UDP-UART/build/esp-idf/mbedtls/x509_crt_bundle
+/* * Data converted from F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/esp-idf/mbedtls/x509_crt_bundle
  */
 .data
 #if !defined (__APPLE__) && !defined (__linux__)

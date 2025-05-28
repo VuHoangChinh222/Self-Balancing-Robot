@@ -1,13 +1,13 @@
 # Target labels
  bootloader
 # Source files and their labels
-D:/iotc/app1/esp32-cam-UDP-UART/build/CMakeFiles/bootloader
-D:/iotc/app1/esp32-cam-UDP-UART/build/CMakeFiles/bootloader.rule
-D:/iotc/app1/esp32-cam-UDP-UART/build/CMakeFiles/bootloader-complete.rule
-D:/iotc/app1/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
-D:/iotc/app1/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
-D:/iotc/app1/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
-D:/iotc/app1/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
-D:/iotc/app1/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
-D:/iotc/app1/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
-D:/iotc/app1/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/CMakeFiles/bootloader
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/CMakeFiles/bootloader.rule
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/CMakeFiles/bootloader-complete.rule
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+F:/Embedded/BalanceCar/esp32-cam-UDP-UART/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule

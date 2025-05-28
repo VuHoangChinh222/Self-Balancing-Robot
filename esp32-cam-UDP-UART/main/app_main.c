@@ -1,8 +1,5 @@
 // http://0.0.0.0/
 
-
-
-
 #include <stdio.h>
 #include <string.h>
 #include <esp_camera.h>
@@ -28,33 +25,31 @@
 #include "driver/uart.h"
 #include <errno.h> // For errno
 
-
-
-#define UDP_PORT 80 // Cổng UDP để lắng nghe
+#define UDP_PORT 80            // Cổng UDP để lắng nghe
 #define UDP_RX_BUFFER_SIZE 128 // Kích thước bộ đệm nhận
 
 // Định nghĩa các chân GPIO cho ESP32-CAM
-#define CAM_PIN_PWDN    32
-#define CAM_PIN_RESET   -1
-#define CAM_PIN_XCLK     0
-#define CAM_PIN_SIOD    26
-#define CAM_PIN_SIOC    27
-#define CAM_PIN_D7      35
-#define CAM_PIN_D6      34
-#define CAM_PIN_D5      39
-#define CAM_PIN_D4      36
-#define CAM_PIN_D3      21
-#define CAM_PIN_D2      19
-#define CAM_PIN_D1      18
-#define CAM_PIN_D0       5
-#define CAM_PIN_VSYNC   25
-#define CAM_PIN_HREF    23
-#define CAM_PIN_PCLK    22
+#define CAM_PIN_PWDN 32
+#define CAM_PIN_RESET -1
+#define CAM_PIN_XCLK 0
+#define CAM_PIN_SIOD 26
+#define CAM_PIN_SIOC 27
+#define CAM_PIN_D7 35
+#define CAM_PIN_D6 34
+#define CAM_PIN_D5 39
+#define CAM_PIN_D4 36
+#define CAM_PIN_D3 21
+#define CAM_PIN_D2 19
+#define CAM_PIN_D1 18
+#define CAM_PIN_D0 5
+#define CAM_PIN_VSYNC 25
+#define CAM_PIN_HREF 23
+#define CAM_PIN_PCLK 22
 
-#define UART_TXD_PIN 14   // GPIO1 (TX)
-#define UART_RXD_PIN 15   // GPIO3 (RX), dùng nếu cần nhận lại
+#define UART_TXD_PIN 14 // GPIO1 (TX)
+#define UART_RXD_PIN 15 // GPIO3 (RX), dùng nếu cần nhận lại
 #define UART_PORT_NUM UART_NUM_1
-#define UART_BAUD_RATE 115200
+#define UART_BAUD_RATE 921600
 // Constants for QR Code and Wi-Fi provisioning
 #define PROV_QR_VERSION "v1"
 #define PROV_TRANSPORT_BLE "ble"
@@ -161,27 +156,30 @@ static esp_err_t example_get_sec2_verifier(const char **verifier, uint16_t *veri
     *verifier_len = sizeof(sec2_verifier);
     return ESP_OK;
 }
-esp_err_t favicon_handler(httpd_req_t *req) {
-    static const uint8_t dummy_favicon[] = { 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10 };
+esp_err_t favicon_handler(httpd_req_t *req)
+{
+    static const uint8_t dummy_favicon[] = {0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10};
     httpd_resp_set_type(req, "image/x-icon");
     return httpd_resp_send(req, (const char *)dummy_favicon, sizeof(dummy_favicon));
 }
 
-
 // Tác vụ lắng nghe và xử lý dữ liệu UDP
-static void udp_receive_task(void *pvParameters) {
+static void udp_receive_task(void *pvParameters)
+{
     char rx_buffer[UDP_RX_BUFFER_SIZE];
-        int sock = -1;
+    int sock = -1;
     char addr_str[128];
 
-    while (1) { // Vòng lặp ngoài để tạo lại socket nếu có lỗi nghiêm trọng
+    while (1)
+    { // Vòng lặp ngoài để tạo lại socket nếu có lỗi nghiêm trọng
         struct sockaddr_in dest_addr;
         dest_addr.sin_addr.s_addr = htonl(INADDR_ANY); // Lắng nghe trên mọi IP của ESP32
         dest_addr.sin_family = AF_INET;
         dest_addr.sin_port = htons(UDP_PORT);
 
         sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-        if (sock < 0) {
+        if (sock < 0)
+        {
             ESP_LOGE(TAG, "Không thể tạo UDP socket: errno %d (%s)", errno, strerror(errno));
             vTaskDelay(pdMS_TO_TICKS(1000)); // Chờ 1 giây trước khi thử lại
             continue;
@@ -189,7 +187,8 @@ static void udp_receive_task(void *pvParameters) {
         ESP_LOGI(TAG, "UDP socket đã được tạo.");
 
         int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        if (err < 0) {
+        if (err < 0)
+        {
             ESP_LOGE(TAG, "UDP socket bind thất bại: errno %d (%s)", errno, strerror(errno));
             close(sock);
             sock = -1;
@@ -198,17 +197,21 @@ static void udp_receive_task(void *pvParameters) {
         }
         ESP_LOGI(TAG, "UDP socket đã bind tới cổng %d", UDP_PORT);
 
-        while (1) { // Vòng lặp trong để nhận dữ liệu
+        while (1)
+        { // Vòng lặp trong để nhận dữ liệu
             ESP_LOGI(TAG, "Đang chờ dữ liệu UDP trên cổng %d...", UDP_PORT);
             struct sockaddr_storage source_addr; // Dùng sockaddr_storage để tương thích IPv4/IPv6
             socklen_t socklen = sizeof(source_addr);
             int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
 
-            if (len < 0) {
+            if (len < 0)
+            {
                 ESP_LOGE(TAG, "UDP recvfrom thất bại: errno %d (%s)", errno, strerror(errno));
                 // Nếu recvfrom thất bại, có thể socket có vấn đề, thoát vòng lặp trong để tạo lại socket
                 break;
-            } else {
+            }
+            else
+            {
                 rx_buffer[len] = 0; // Kết thúc chuỗi null
                 // Lấy địa chỉ IP và cổng của người gửi
                 inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
@@ -219,7 +222,8 @@ static void udp_receive_task(void *pvParameters) {
                 // theo thứ tự: joystick1, joystick2, speed
                 // Định dạng: BIG_ENDIAN
 
-                if (len == 3 * sizeof(int16_t)) { // Mong đợi 6 bytes
+                if (len == 3 * sizeof(int16_t))
+                { // Mong đợi 6 bytes
                     int16_t j1_val_net, j2_val_net, speed_val_net;
 
                     // Sao chép dữ liệu từ buffer để đảm bảo alignment và xử lý byte order
@@ -241,22 +245,38 @@ static void udp_receive_task(void *pvParameters) {
                     // Kiểm tra phạm vi giá trị
                     // Joystick 1 & 2: [-100, 100], Speed: [0, 100]
                     bool ranges_ok = true;
-                    if (j1_val < -100 || j1_val > 100) { ESP_LOGW(TAG, "Giá trị J1 (%d) nằm ngoài khoảng [-100, 100]", j1_val); ranges_ok = false; }
-                    if (j2_val < -100 || j2_val > 100) { ESP_LOGW(TAG, "Giá trị J2 (%d) nằm ngoài khoảng [-100, 100]", j2_val); ranges_ok = false; }
-                    if (speed_val < 0 || speed_val > 100) { ESP_LOGW(TAG, "Giá trị Speed (%d) nằm ngoài khoảng [0, 100]", speed_val); ranges_ok = false; }
+                    if (j1_val < -100 || j1_val > 100)
+                    {
+                        ESP_LOGW(TAG, "Giá trị J1 (%d) nằm ngoài khoảng [-100, 100]", j1_val);
+                        ranges_ok = false;
+                    }
+                    if (j2_val < -100 || j2_val > 100)
+                    {
+                        ESP_LOGW(TAG, "Giá trị J2 (%d) nằm ngoài khoảng [-100, 100]", j2_val);
+                        ranges_ok = false;
+                    }
+                    if (speed_val < 0 || speed_val > 100)
+                    {
+                        ESP_LOGW(TAG, "Giá trị Speed (%d) nằm ngoài khoảng [0, 100]", speed_val);
+                        ranges_ok = false;
+                    }
 
-                    if (ranges_ok) {
+                    if (ranges_ok)
+                    {
                         ESP_LOGI(TAG, "Dữ liệu UDP hợp lệ -> J1: %d, J2: %d, Speed: %d",
                                  j1_val, j2_val, speed_val);
                         // TODO: Thêm logic để sử dụng các giá trị này (ví dụ: điều khiển động cơ, servo)
                         // Gửi dữ liệu qua UART với định dạng mới
                         uart_send_data(j1_val, j2_val);
                         // Ví dụ: control_robot(j1_val, j2_val, speed_val);
-                    } else {
+                    }
+                    else
+                    {
                         ESP_LOGW(TAG, "Dữ liệu UDP nhận được có giá trị nằm ngoài phạm vi cho phép.");
                     }
-
-                } else {
+                }
+                else
+                {
                     ESP_LOGW(TAG, "Đã nhận %d bytes, mong đợi %d bytes (3 shorts). Bỏ qua gói tin.", len, (int)(3 * sizeof(int16_t)));
                     // Nếu muốn xem nội dung gói tin không hợp lệ (dạng hex):
                     // char hex_dump_buffer[len * 2 + 1];
@@ -266,7 +286,8 @@ static void udp_receive_task(void *pvParameters) {
             }
         }
         // Nếu thoát khỏi vòng lặp trong, đóng socket hiện tại trước khi thử tạo lại
-        if (sock >= 0) {
+        if (sock >= 0)
+        {
             ESP_LOGI(TAG, "Đóng UDP socket.");
             shutdown(sock, 0); // Ngắt kết nối một cách lịch sự
             close(sock);
@@ -276,38 +297,51 @@ static void udp_receive_task(void *pvParameters) {
     vTaskDelete(NULL); // Lệnh này sẽ không bao giờ được gọi tới nếu vòng lặp ngoài là vô hạn
 }
 
-static void uart_send_data(int16_t j1, int16_t j2) {
+static void uart_send_data(int16_t j1, int16_t j2)
+{
     char uart_buffer[32]; // Đủ lớn cho "X:-100,Y:-100\n"
 
     // Định dạng chuỗi theo yêu cầu "X:value,Y:value\n"
     int len = snprintf(uart_buffer, sizeof(uart_buffer), "X:%d,Y:%d\n", j2, j1);
 
-    if (len > 0 && len < sizeof(uart_buffer)) {
+    if (len > 0 && len < sizeof(uart_buffer))
+    {
         // Gửi chuỗi đã định dạng qua UART
-        uart_write_bytes(UART_PORT_NUM, (const char*)uart_buffer, len);
+        uart_write_bytes(UART_PORT_NUM, (const char *)uart_buffer, len);
         // ESP_LOGD(TAG, "UART sent: %.*s", len, uart_buffer); // Ghi log nếu cần debug
-    } else {
+    }
+    else
+    {
         ESP_LOGE(TAG, "Không thể định dạng chuỗi UART hoặc buffer quá nhỏ. len: %d", len);
     }
 }
 // Hàm xử lý sự kiện Wi-Fi
-static void wifi_event_handler(void* arg, esp_event_base_t event_base,
-                               int32_t event_id, void* event_data) {
-    if (event_base == WIFI_EVENT) {
-        if (event_id == WIFI_EVENT_STA_START) {
+static void wifi_event_handler(void *arg, esp_event_base_t event_base,
+                               int32_t event_id, void *event_data)
+{
+    if (event_base == WIFI_EVENT)
+    {
+        if (event_id == WIFI_EVENT_STA_START)
+        {
             esp_wifi_connect();
-        } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        }
+        else if (event_id == WIFI_EVENT_STA_DISCONNECTED)
+        {
             ESP_LOGI(TAG, "Disconnected. Reconnecting...");
             wifi_prov_mgr_reset_provisioning();
             // Xóa bit báo đã có IP khi mất kết nối
-            if (wifi_event_group) {
+            if (wifi_event_group)
+            {
                 xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_BIT);
             }
         }
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+    }
+    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
+    {
         wifi_connected = true;
         // Đảm bảo event group đã được tạo trước khi set bit
-        if (wifi_event_group) {
+        if (wifi_event_group)
+        {
             xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         }
         ESP_LOGI(TAG, "Wi-Fi connected and IP received.");
@@ -316,37 +350,38 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 void camera_init()
 {
     camera_config_t config = {
-        .pin_pwdn       = CAM_PIN_PWDN,
-        .pin_reset      = CAM_PIN_RESET,
-        .pin_xclk       = CAM_PIN_XCLK,
-        .pin_sscb_sda   = CAM_PIN_SIOD,
-        .pin_sscb_scl   = CAM_PIN_SIOC,
+        .pin_pwdn = CAM_PIN_PWDN,
+        .pin_reset = CAM_PIN_RESET,
+        .pin_xclk = CAM_PIN_XCLK,
+        .pin_sscb_sda = CAM_PIN_SIOD,
+        .pin_sscb_scl = CAM_PIN_SIOC,
 
-        .pin_d7         = CAM_PIN_D7,
-        .pin_d6         = CAM_PIN_D6,
-        .pin_d5         = CAM_PIN_D5,
-        .pin_d4         = CAM_PIN_D4,
-        .pin_d3         = CAM_PIN_D3,
-        .pin_d2         = CAM_PIN_D2,
-        .pin_d1         = CAM_PIN_D1,
-        .pin_d0         = CAM_PIN_D0,
-        .pin_vsync      = CAM_PIN_VSYNC,
-        .pin_href       = CAM_PIN_HREF,
-        .pin_pclk       = CAM_PIN_PCLK,
+        .pin_d7 = CAM_PIN_D7,
+        .pin_d6 = CAM_PIN_D6,
+        .pin_d5 = CAM_PIN_D5,
+        .pin_d4 = CAM_PIN_D4,
+        .pin_d3 = CAM_PIN_D3,
+        .pin_d2 = CAM_PIN_D2,
+        .pin_d1 = CAM_PIN_D1,
+        .pin_d0 = CAM_PIN_D0,
+        .pin_vsync = CAM_PIN_VSYNC,
+        .pin_href = CAM_PIN_HREF,
+        .pin_pclk = CAM_PIN_PCLK,
 
-        .xclk_freq_hz   = 20000000,
-        .ledc_timer     = LEDC_TIMER_0,
-        .ledc_channel   = LEDC_CHANNEL_0,
+        .xclk_freq_hz = 20000000,
+        .ledc_timer = LEDC_TIMER_0,
+        .ledc_channel = LEDC_CHANNEL_0,
 
-        .pixel_format   = PIXFORMAT_JPEG,
-        .frame_size     = FRAMESIZE_VGA,
-        .jpeg_quality   = 12,
-        .fb_count       = 2,
-        .grab_mode      = CAMERA_GRAB_LATEST   // giúp giảm độ trễ
+        .pixel_format = PIXFORMAT_JPEG,
+        .frame_size = FRAMESIZE_VGA,
+        .jpeg_quality = 12,
+        .fb_count = 2,
+        .grab_mode = CAMERA_GRAB_LATEST // giúp giảm độ trễ
     };
 
     esp_err_t err = esp_camera_init(&config);
-    if (err != ESP_OK) {
+    if (err != ESP_OK)
+    {
         ESP_LOGE(TAG, "Camera init failed with error 0x%x", err);
         return;
     }
@@ -358,25 +393,30 @@ static esp_err_t stream_handler(httpd_req_t *req)
     camera_fb_t *fb = NULL;
     char part_buf[64];
 
-    static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace; boundary=frame";
-    static const char* _STREAM_BOUNDARY = "\r\n--frame\r\n";
-    static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+    static const char *_STREAM_CONTENT_TYPE = "multipart/x-mixed-replace; boundary=frame";
+    static const char *_STREAM_BOUNDARY = "\r\n--frame\r\n";
+    static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
 
     httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
 
-    while (true) {
+    while (true)
+    {
         esp_err_t res = ESP_OK;
         fb = esp_camera_fb_get();
-        if (!fb) {
+        if (!fb)
+        {
             ESP_LOGE(TAG, "Camera capture failed");
             return ESP_FAIL;
         }
 
         // Gửi boundary
-        for (int i = 0; i < MAX_SEND_RETRIES; ++i) {
+        for (int i = 0; i < MAX_SEND_RETRIES; ++i)
+        {
             res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
-            if (res == ESP_OK) break;
-            if (res != ESP_ERR_HTTPD_RESP_SEND || errno != EAGAIN) { // Lỗi khác EAGAIN hoặc lỗi nghiêm trọng từ httpd
+            if (res == ESP_OK)
+                break;
+            if (res != ESP_ERR_HTTPD_RESP_SEND || errno != EAGAIN)
+            { // Lỗi khác EAGAIN hoặc lỗi nghiêm trọng từ httpd
                 ESP_LOGW(TAG, "Failed to send stream boundary: %s (errno %d)", esp_err_to_name(res), errno);
                 esp_camera_fb_return(fb);
                 goto stream_end; // Thoát hoàn toàn
@@ -384,14 +424,21 @@ static esp_err_t stream_handler(httpd_req_t *req)
             ESP_LOGD(TAG, "Send boundary retry %d/%d", i + 1, MAX_SEND_RETRIES);
             vTaskDelay(pdMS_TO_TICKS(RETRY_DELAY_MS));
         }
-        if (res != ESP_OK) { esp_camera_fb_return(fb); goto stream_end; }
+        if (res != ESP_OK)
+        {
+            esp_camera_fb_return(fb);
+            goto stream_end;
+        }
 
         // Gửi part header
         size_t hlen = snprintf(part_buf, sizeof(part_buf), _STREAM_PART, fb->len);
-        for (int i = 0; i < MAX_SEND_RETRIES; ++i) {
+        for (int i = 0; i < MAX_SEND_RETRIES; ++i)
+        {
             res = httpd_resp_send_chunk(req, part_buf, hlen);
-            if (res == ESP_OK) break;
-            if (res != ESP_ERR_HTTPD_RESP_SEND || errno != EAGAIN) {
+            if (res == ESP_OK)
+                break;
+            if (res != ESP_ERR_HTTPD_RESP_SEND || errno != EAGAIN)
+            {
                 ESP_LOGW(TAG, "Failed to send stream part header: %s (errno %d)", esp_err_to_name(res), errno);
                 esp_camera_fb_return(fb);
                 goto stream_end;
@@ -399,13 +446,20 @@ static esp_err_t stream_handler(httpd_req_t *req)
             ESP_LOGD(TAG, "Send part header retry %d/%d", i + 1, MAX_SEND_RETRIES);
             vTaskDelay(pdMS_TO_TICKS(RETRY_DELAY_MS));
         }
-        if (res != ESP_OK) { esp_camera_fb_return(fb); goto stream_end; }
+        if (res != ESP_OK)
+        {
+            esp_camera_fb_return(fb);
+            goto stream_end;
+        }
 
         // Gửi dữ liệu frame
-        for (int i = 0; i < MAX_SEND_RETRIES; ++i) {
+        for (int i = 0; i < MAX_SEND_RETRIES; ++i)
+        {
             res = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
-            if (res == ESP_OK) break;
-            if (res != ESP_ERR_HTTPD_RESP_SEND || errno != EAGAIN) {
+            if (res == ESP_OK)
+                break;
+            if (res != ESP_ERR_HTTPD_RESP_SEND || errno != EAGAIN)
+            {
                 ESP_LOGW(TAG, "Failed to send stream frame data: %s (errno %d)", esp_err_to_name(res), errno);
                 esp_camera_fb_return(fb);
                 goto stream_end;
@@ -413,11 +467,16 @@ static esp_err_t stream_handler(httpd_req_t *req)
             ESP_LOGD(TAG, "Send frame data retry %d/%d", i + 1, MAX_SEND_RETRIES);
             vTaskDelay(pdMS_TO_TICKS(RETRY_DELAY_MS));
         }
-        if (res != ESP_OK) { esp_camera_fb_return(fb); goto stream_end; }
+        if (res != ESP_OK)
+        {
+            esp_camera_fb_return(fb);
+            goto stream_end;
+        }
 
         // Gửi kết thúc frame (ít quan trọng hơn, nếu lỗi ở đây có thể bỏ qua retry)
         res = httpd_resp_send_chunk(req, "\r\n", 2);
-        if (res != ESP_OK) {
+        if (res != ESP_OK)
+        {
             ESP_LOGW(TAG, "Failed to send stream frame end: %s (errno %d)", esp_err_to_name(res), errno);
             // Không nhất thiết phải thoát ở đây nếu các phần chính đã được gửi
         }
@@ -433,18 +492,18 @@ stream_end:
 static httpd_handle_t start_webserver(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8080;  // Đổi port thành 8080
-    config.ctrl_port = 32768;   // Port điều khiển, để mặc định hoặc đổi nếu cần
+    config.server_port = 8080; // Đổi port thành 8080
+    config.ctrl_port = 32768;  // Port điều khiển, để mặc định hoặc đổi nếu cần
 
     httpd_handle_t server = NULL;
 
-    if (httpd_start(&server, &config) == ESP_OK) {
+    if (httpd_start(&server, &config) == ESP_OK)
+    {
         httpd_uri_t stream_uri = {
-            .uri       = "/capture",
-            .method    = HTTP_GET,
-            .handler   = stream_handler,
-            .user_ctx  = NULL
-        };
+            .uri = "/capture",
+            .method = HTTP_GET,
+            .handler = stream_handler,
+            .user_ctx = NULL};
         httpd_register_uri_handler(server, &stream_uri);
     }
 
@@ -455,8 +514,9 @@ void app_main(void)
 {
     // Khởi tạo NVS
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());// xóa nvs 
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        ESP_ERROR_CHECK(nvs_flash_erase()); // xóa nvs
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
@@ -467,7 +527,7 @@ void app_main(void)
     // Khởi tạo mạng và vòng lặp sự kiện
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    
+
     // Đăng ký sự kiện Wi-Fi và IP
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
@@ -489,7 +549,8 @@ void app_main(void)
     bool provisioned = false;
     ESP_ERROR_CHECK(wifi_prov_mgr_is_provisioned(&provisioned));
 
-    if (!provisioned) {
+    if (!provisioned)
+    {
         ESP_LOGI(TAG, "Starting provisioning");
         char service_name[12];
         get_device_service_name(service_name, sizeof(service_name));
@@ -514,7 +575,9 @@ void app_main(void)
                                                          service_name,
                                                          NULL));
         wifi_prov_print_qr(service_name, username, pop, PROV_TRANSPORT_BLE);
-    } else {
+    }
+    else
+    {
         ESP_LOGI(TAG, "Device already provisioned. Attempting to connect to Wi-Fi...");
         // Không cần provisioning manager nữa nếu đã provisioned
         wifi_prov_mgr_deinit();
@@ -526,19 +589,20 @@ void app_main(void)
     // Chờ kết nối Wi-Fi (blocking chờ đến khi có IP)
     ESP_LOGI(TAG, "Waiting for Wi-Fi connection...");
     // Đảm bảo event group đã được tạo
-    if (!wifi_event_group) wifi_event_group = xEventGroupCreate(); // Tạo lại nếu chưa có (dù nên có từ trên)
+    if (!wifi_event_group)
+        wifi_event_group = xEventGroupCreate(); // Tạo lại nếu chưa có (dù nên có từ trên)
     xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true, portMAX_DELAY);
 
     // ====== Wi-Fi đã kết nối thành công ======
     uart_config_t uart_config = {
         .baud_rate = UART_BAUD_RATE,
         .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
+        .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT, // Hoặc UART_SCLK_APB
     };
-     // Cài đặt driver UART
+    // Cài đặt driver UART
     // Kích thước buffer RX, TX. Kích thước queue, queue handle, cờ interrupt.
     // Đặt tx_buffer_size = 0 để uart_write_bytes hoạt động ở chế độ blocking.
     ESP_ERROR_CHECK(uart_driver_install(UART_PORT_NUM, UDP_RX_BUFFER_SIZE * 2, 0, 0, NULL, 0));
@@ -548,18 +612,18 @@ void app_main(void)
     ESP_LOGI(TAG, "UART driver for port %d initialized.", UART_PORT_NUM);
 
     // Khởi tạo tác vụ nhận UDP sau khi đã có kết nối Wi-Fi và UART đã sẵn sàng
-   
+
     // Khởi tạo tác vụ nhận UDP sau khi đã có kết nối Wi-Fi
     // xTaskCreate(udp_receive_task, "udp_receive_task", 4096, NULL, 5, NULL);
 
     // Cấu hình camera
-     camera_init();
+    camera_init();
 
     // Bắt đầu server web
     // start_web_server();
 
     // Vòng lặp chụp ảnh
-   esp_netif_ip_info_t ip_info;
+    esp_netif_ip_info_t ip_info;
     esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     esp_netif_get_ip_info(netif, &ip_info);
 
