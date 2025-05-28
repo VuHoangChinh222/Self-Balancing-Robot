@@ -119,11 +119,16 @@ osMutexId_t joystickMutexHandle;
 #define CAN_RETRY_COUNT 3   // Số lần thử lại nếu gửi thất bại
 MPU6050_t MPU6050;
 // Biến nhận tín hiệu UART2
-uint8_t u8_RxBuff[UART_BUFFER_SIZE];
+typedef struct
+{
+  char buffer[50];
+  uint8_t idx;
+  uint32_t lastReceiveTime;
+  uint8_t isNewData;
+} UART_Buffer_t;
 uint8_t u8_RxData;
-uint8_t rxIndex;
-uint32_t lastReceiveUARTTime = 0;
-uint8_t uartActive = 0;
+// Khai báo là volatile vì được truy cập từ interrupt
+volatile UART_Buffer_t uartBuffer = {0};
 // Các biến liên quan đến cân bằng
 volatile float Ax = 0, Ay = 0;
 // CAN
@@ -136,6 +141,8 @@ CAN_TxHeaderTypeDef TxHeader = {
 
 uint8_t TxData[4];
 uint32_t TxMailbox;
+
+#define UART_TIMEOUT 100
 /* USER CODE END 0 */
 
 /**
@@ -198,6 +205,11 @@ int main(void)
   osKernelInitialize();
 
   /* USER CODE BEGIN RTOS_MUTEX */
+  joystickMutexHandle = osMutexNew(NULL);
+  if (joystickMutexHandle == NULL)
+  {
+    Error_Handler();
+  }
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
 
@@ -490,39 +502,22 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART2)
   {
-    static char buffer[50];
-    static uint8_t idx = 0;
+    uartBuffer.lastReceiveTime = HAL_GetTick();
 
     if (u8_RxData == '\n' || u8_RxData == '\r')
     {
-      if (idx > 0)
+      if (uartBuffer.idx > 0)
       {
-        buffer[idx] = '\0';
-        char *x_str = strstr(buffer, "X:");
-        char *y_str = strstr(buffer, "Y:");
-        if (x_str && y_str)
-        {
-          char *comma = strchr(x_str, ',');
-          if (comma && comma < y_str)
-          {
-            *comma = '\0';
-            int16_t x = atoi(x_str + 2);
-            int16_t y = atoi(y_str + 2);
-            x = x > 100 ? 100 : (x < -100 ? -100 : x);
-            y = y > 100 ? 100 : (y < -100 ? -100 : y);
-            osMutexAcquire(joystickMutexHandle, osWaitForever);
-            joystickData.x = x;
-            joystickData.y = y;
-            osMutexRelease(joystickMutexHandle);
-          }
-        }
+        uartBuffer.buffer[uartBuffer.idx] = '\0';
+        uartBuffer.isNewData = 1;
       }
-      idx = 0;
+      uartBuffer.idx = 0;
     }
-    else if (idx < sizeof(buffer) - 1)
+    else if (uartBuffer.idx < sizeof(uartBuffer.buffer) - 1)
     {
-      buffer[idx++] = u8_RxData;
+      uartBuffer.buffer[uartBuffer.idx++] = u8_RxData;
     }
+
     HAL_UART_Receive_IT(&huart2, &u8_RxData, 1);
   }
 }
@@ -572,7 +567,7 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
   {
     TxHeader.StdId = 0x448;
     TxHeader.DLC = 4;
-    TxData[0] = 23; // Command "Y" for joystickY
+    TxData[0] = 32; // Command "Y" for joystickY
     TxData[1] = y > 0 ? 1 : 0;
     y = abs(y);
     TxData[2] = (y >> 8) & 0xFF;
@@ -584,19 +579,19 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
       Error_Handler();
     }
   }
-	osDelay(1);
-	TxHeader.StdId=0x449;
-	TxHeader.DLC=4;
-	TxData[0]=42;
-	float gyroY=MPU6050.Gy;
-	TxData[1] = gyroY >= 0 ? 1 : 0;
+  osDelay(1);
+  TxHeader.StdId = 0x449;
+  TxHeader.DLC = 4;
+  TxData[0] = 42;
+  float gyroY = MPU6050.Gy;
+  TxData[1] = gyroY >= 0 ? 1 : 0;
   gyroY = gyroY < 0 ? -gyroY : gyroY;
   int16_t gyroY_int = (int16_t)(gyroY * 100);
   TxData[2] = (gyroY_int >> 8) & 0xFF;
   TxData[3] = gyroY_int & 0xFF;
-	if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
   {
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
     Error_Handler();
   }
 }
@@ -630,9 +625,48 @@ void StartDefaultTask(void *argument)
 void StartTask02(void *argument)
 {
   /* USER CODE BEGIN StartTask02 */
+  char processBuffer[50]; // Thêm khai báo này
   /* Infinite loop */
   for (;;)
   {
+    if (uartBuffer.isNewData)
+    {
+      // Copy buffer để xử lý
+      __disable_irq();
+      strcpy(processBuffer, (const char *)uartBuffer.buffer);
+      uartBuffer.isNewData = 0;
+      __enable_irq();
+
+      // Xử lý dữ liệu
+      char *x_str = strstr(processBuffer, "X:");
+      char *y_str = strstr(processBuffer, "Y:");
+      if (x_str && y_str)
+      {
+        char *comma = strchr(x_str, ',');
+        if (comma && comma < y_str)
+        {
+          *comma = '\0';
+          int16_t x = atoi(x_str + 2);
+          int16_t y = atoi(y_str + 2);
+          x = x > 100 ? 100 : (x < -100 ? -100 : x);
+          y = y > 100 ? 100 : (y < -100 ? -100 : y);
+
+          osMutexAcquire(joystickMutexHandle, osWaitForever);
+          joystickData.x = x;
+          joystickData.y = y;
+          osMutexRelease(joystickMutexHandle);
+        }
+      }
+    }
+
+    // Check timeout
+    if (HAL_GetTick() - uartBuffer.lastReceiveTime > UART_TIMEOUT)
+    {
+      osMutexAcquire(joystickMutexHandle, osWaitForever);
+      joystickData.x = 0;
+      joystickData.y = 0;
+      osMutexRelease(joystickMutexHandle);
+    }
     osDelay(1);
   }
   /* USER CODE END StartTask02 */
@@ -673,15 +707,14 @@ void StartTask04(void *argument)
   for (;;)
   {
     float currentAngle;
-    JoystickData_t currentJoystick;
+    int16_t currentX, currentY;
     // Get MPU6050 data
     currentAngle = Ay;
     // Get joystick data
-    osMutexAcquire(joystickMutexHandle, osWaitForever);
-    currentJoystick = joystickData;
-    osMutexRelease(joystickMutexHandle);
-    CAN_Send_Extended(currentAngle, currentJoystick.x, currentJoystick.y);
-    osDelay(CAN_SEND_INTERVAL);
+    currentX = joystickData.x;
+    currentY = joystickData.y;
+    CAN_Send_Extended(currentAngle, currentX, currentY);
+    osDelay(1);
   }
   /* USER CODE END StartTask04 */
 }

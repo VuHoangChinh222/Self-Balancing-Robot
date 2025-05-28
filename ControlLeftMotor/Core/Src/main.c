@@ -85,6 +85,10 @@ PID_t PID_Position, PID_SpeedLeft;
 #define MAX_SPEED_COMMAND 100.0f
 #define JOYSTICK_DEADZONE 5.0f
 //--------------------------------------
+#define MAX_TILT_ANGLE 50.0f    // Góc nghiêng tối đa cho phép
+#define MAX_MOVEMENT_TILT 15.0f // Góc nghiêng tối đa cho di chuyển
+#define JOYSTICK_TO_TILT 0.15f  // Hệ số chuyển đổi joystick sang góc nghiêng
+//--------------------------------------
 #define MAX_GYRO_RATE 150.0f   // Giới hạn tốc độ góc tối đa
 #define RECOVERY_KP_SCALE 0.7f // Hệ số giảm Kp khi phát hiện giật
 #define RECOVERY_KD_SCALE 1.5f // Hệ số tăng Kd khi phát hiện giật
@@ -190,9 +194,9 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  PID_Position.Kp = 1.5;
-  PID_Position.Ki = 0.04;
-  PID_Position.Kd = 0.0;
+  PID_Position.Kp = 5.0;
+  PID_Position.Ki = 0.01;
+  PID_Position.Kd = 0.5;
   PID_SpeedLeft.Kp = 2.0;
   PID_SpeedLeft.Ki = 0.02;
   PID_SpeedLeft.Kd = 0.1;
@@ -540,8 +544,16 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 void updateMotors(float PWM)
 {
   float target_abs_pwm = fminf(fabsf(PWM), MAX_PWM_OUTPUT);
-  HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM > 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
-  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)fabsf(target_abs_pwm));
+  if (target_abs_pwm >= -1 && target_abs_pwm <= 1)
+  {
+    HAL_GPIO_WritePin(BREAK_GPIO_Port, BREAK_Pin, GPIO_PIN_SET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(BREAK_GPIO_Port, BREAK_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM > 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)fabsf(target_abs_pwm));
+  }
 }
 
 uint8_t readHallState(void)
@@ -683,71 +695,117 @@ void controlLoop(void)
   float currentGyro = gyroY;
   ComputeMotorSpeed();
 
-  if (currentAngle > -40 && currentAngle < 40)
+  // Kiểm tra góc an toàn
+  if (fabsf(currentAngle) < MAX_TILT_ANGLE)
   {
-    int32_t currentSpeed = motorSpeedRPS * COUNTS_PER_REV;
-    int32_t currentPosition = hallCounter;
-    float velocity_target = 0;
-    float speed_cmd = 0;
+    float speed_cmd = 0;   // Tốc độ mong muốn từ PID tốc độ
+    float balance_cmd = 0; // Moment cân bằng từ PID góc
+    float pwm_output = 0;  // PWM cuối cùng
 
-    static int32_t holdPosition = 0;
+    static int32_t initialPosition = 0;
     static uint8_t isHolding = 0;
+    static uint8_t isInitialized = 0;
+    int32_t currentSpeed = motorSpeedRPS * COUNTS_PER_REV;
 
-    // Nếu có tín hiệu joystick Y -> sử dụng PID tốc độ
-    if (fabsf((float_t)joyStickY) > JOYSTICK_DEADZONE && fabsf((float_t)joyStickY) < 100)
+    // 1. Điều khiển vị trí (tầng ngoài nhất)
+    if (fabsf((float_t)joyStickY) > JOYSTICK_DEADZONE)
     {
-      // Sử dụng PID tốc độ
-      velocity_target = (joyStickY / 100.0f) * MAX_SPEED_COMMAND;
+      // Chế độ điều khiển tốc độ từ joystick
+      float velocity_target = (joyStickY / 100.0f) * MAX_SPEED_COMMAND;
       speed_cmd = PID_Compute(&PID_SpeedLeft, velocity_target, currentSpeed, CONTROL_DT);
       isHolding = 0;
+      isInitialized = 0;
     }
-    else
+    else if (fabsf(currentAngle) < 15.0f)
     {
-      // Không có tín hiệu joystick -> sử dụng PID vị trí
-      if (!isHolding)
+      // Chế độ giữ vị trí
+      if (!isInitialized)
       {
-        holdPosition = currentPosition;
+        initialPosition = hallCounter;
+        isInitialized = 1;
         isHolding = 1;
+        PID_Reset(&PID_Position);
+        PID_Reset(&PID_SpeedLeft);
       }
-      speed_cmd = PID_Compute(&PID_Position, holdPosition, currentPosition, CONTROL_DT);
+
+      if (isHolding)
+      {
+        // PID vị trí -> tốc độ mong muốn
+        float position_cmd = PID_Compute(&PID_Position, initialPosition, hallCounter, CONTROL_DT);
+        position_cmd = fminf(fmaxf(position_cmd, -30.0f), 30.0f);
+
+        // PID tốc độ -> moment cần thiết
+        speed_cmd = PID_Compute(&PID_SpeedLeft, position_cmd, currentSpeed, CONTROL_DT);
+        speed_cmd = fminf(fmaxf(speed_cmd, -30.0f), 30.0f);
+      }
     }
 
-    // Điều khiển cân bằng
+    // 2. Điều khiển cân bằng (tầng trong cùng)
     float base_Kp = 24.0f;
     float base_Kd = 0.8f;
     float Kp = base_Kp;
     float Kd = base_Kd;
 
-    // Phát hiện chuyển động đột ngột
+    // Điều chỉnh hệ số theo góc nghiêng
+    if (fabsf(currentAngle) > 20.0f)
+    {
+      Kp = base_Kp * 1.5f; // Tăng mạnh khi góc lớn
+      Kd = base_Kd * 1.3f;
+    }
+    else if (fabsf(currentAngle) > 10.0f)
+    {
+      Kp = base_Kp * 1.2f;
+      Kd = base_Kd * 1.1f;
+    }
+    else if (fabsf(currentAngle) < 5.0f)
+    {
+      Kp = base_Kp * 0.8f; // Giảm khi gần cân bằng
+      Kd = base_Kd * 1.2f;
+    }
+
+    // Xử lý chuyển động đột ngột
     if (fabsf(currentGyro) > MAX_GYRO_RATE)
     {
-      Kp = base_Kp * RECOVERY_KP_SCALE;
-      Kd = base_Kd * RECOVERY_KD_SCALE;
+      Kp *= RECOVERY_KP_SCALE;
+      Kd *= RECOVERY_KD_SCALE;
     }
 
-    // Điều chỉnh hệ số theo góc nghiêng
-    if (fabsf(currentAngle) < 10.0f)
+    // Tính toán moment cân bằng
+    float target_angle = 0;
+    if (fabsf((float_t)joyStickY) > JOYSTICK_DEADZONE)
     {
-      Kp *= 0.9f;
-      Kd *= 1.3f;
+      target_angle = -(joyStickY / 100.0f) * MAX_MOVEMENT_TILT;
+    }
+    float angleError = currentAngle - target_angle;
+    balance_cmd = Kp * angleError + Kd * currentGyro;
+
+    // 3. Tổng hợp các thành phần điều khiển
+    float balance_weight = 1.0f;
+    float speed_weight = 0.3f;
+    pwm_output = -balance_weight * balance_cmd + speed_weight * speed_cmd;
+
+    // 4. Xử lý quay (turning)
+    if (fabsf((float_t)joyStickX) <= 100)
+    {
+      float base_turn_power = 200.0f;
+      float angle_factor = 1.0f - (fabsf(currentAngle) / MAX_TILT_ANGLE);
+      float turn_cmd = (joyStickX / 100.0f) * base_turn_power * angle_factor;
+      pwm_output += turn_cmd;
     }
 
-    float balance_cmd = Kp * currentAngle + Kd * currentGyro;
-    float pwm_output = -balance_cmd + speed_cmd; // Thêm speed_cmd vào đây
+    // 5. Giới hạn và làm mượt PWM
     pwm_output = ClampPWM(pwm_output);
-
-    // Xử lý joystick X nếu có
-    float turn_adjust = (fabsf((float_t)joyStickX) < 100) ? (joyStickX / 100.0f) * fabsf(pwm_output) : 0;
-    float pwm_left = pwm_output + turn_adjust;
-
-    pwm_left_filtered = SmoothPWM(pwm_left_filtered, pwm_left);
+    pwm_left_filtered = SmoothPWM(pwm_left_filtered, pwm_output);
     pwm_left_filtered = ClampPWM(pwm_left_filtered);
 
+    // 6. Xuất PWM ra động cơ
     updateMotors(pwm_left_filtered);
   }
   else
   {
+    // Dừng động cơ khi vượt quá góc an toàn
     updateMotors(0);
+    pwm_left_filtered = 0;
   }
 }
 /* USER CODE END 4 */
