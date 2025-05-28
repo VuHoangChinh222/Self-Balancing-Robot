@@ -193,7 +193,12 @@
         <Ww>
           <count>8</count>
           <WinNumber>1</WinNumber>
-          <ItemText>RxData</ItemText>
+          <ItemText>RxData,0x0A</ItemText>
+        </Ww>
+        <Ww>
+          <count>9</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>hallCounter,0x0A</ItemText>
         </Ww>
       </WatchWindow1>
       <Tracepoint>
