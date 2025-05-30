@@ -1,7 +1,7 @@
 #ifndef PID_H
 #define PID_H
-#define PID_INTEGRAL_LIMIT 100.0   // Gioi han tich phan
-#define PID_DERIVATIVE_LIMIT 50.0 // Gioi han dao ham
+#define PID_INTEGRAL_LIMIT 500.0   // Gioi han tich phan
+#define PID_DERIVATIVE_LIMIT 200.0 // Gioi han dao ham
 typedef struct
 {
   float Kp;

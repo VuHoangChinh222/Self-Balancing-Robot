@@ -159,6 +159,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -706,7 +707,7 @@ void StartTask04(void *argument)
   for (;;)
   {
     float currentAngle;
-    int16_t currentX, currentY;
+    int16_t currentX=0, currentY=0;
     // Get MPU6050 data
     currentAngle = Ay;
     // Get joystick data
