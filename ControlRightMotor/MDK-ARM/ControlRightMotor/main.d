@@ -28,6 +28,7 @@ controlrightmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flas
 controlrightmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
 controlrightmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
 controlrightmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
+controlrightmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h
 controlrightmotor\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h
 controlrightmotor\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h
 controlrightmotor\main.o: ../Core/Inc/FreeRTOSConfig.h
@@ -42,3 +43,5 @@ controlrightmotor\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_
 controlrightmotor\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 controlrightmotor\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 controlrightmotor\main.o: ../MDK-ARM/pid.h
+controlrightmotor\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+controlrightmotor\main.o: ../MDK-ARM/flashStorage.h

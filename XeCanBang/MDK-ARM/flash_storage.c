@@ -1,43 +1,131 @@
 #include "flash_storage.h"
-#include "stm32f1xx_hal.h"
+#include <string.h>
 
-#define FLASH_USER_START_ADDR  ((uint32_t)0x0801FC00)
-
-void SavePIDToFlash(PID_t *pid) {
-    HAL_FLASH_Unlock();
-
-    FLASH_EraseInitTypeDef eraseInit;
-    uint32_t pageError;
-    eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
-    eraseInit.PageAddress = FLASH_USER_START_ADDR;
-    eraseInit.NbPages = 1;
-
-    HAL_FLASHEx_Erase(&eraseInit, &pageError);
-
-    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, FLASH_USER_START_ADDR, *(uint32_t*)&pid->Kp);
-    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, FLASH_USER_START_ADDR+4, *(uint32_t*)&pid->Ki);
-    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, FLASH_USER_START_ADDR+8, *(uint32_t*)&pid->Kd);
-
-    HAL_FLASH_Lock();
+static uint32_t Calculate_Checksum(PIDSettings_t *settings)
+{
+    uint32_t sum = 0;
+    uint32_t *data = (uint32_t *)settings;
+    // Tính tổng tất cả các giá trị trừ checksum
+    for (int i = 0; i < (sizeof(PIDSettings_t) / 4 - 1); i++)
+    {
+        sum += data[i];
+    }
+    return sum;
 }
 
-void LoadPIDFromFlash(PID_t *pid) {
-    float tempKp = *(float*)FLASH_USER_START_ADDR;
-    float tempKi = *(float*)(FLASH_USER_START_ADDR+4);
-    float tempKd = *(float*)(FLASH_USER_START_ADDR+8);
+HAL_StatusTypeDef Flash_Write_PID(PID_t *position, PID_t *speed, PID_t *pitch, PID_t *yaw)
+{
+    HAL_StatusTypeDef status;
+    FLASH_EraseInitTypeDef EraseInitStruct;
+    uint32_t PAGEError;
+    PIDSettings_t settings;
 
-    // Kiem tra du lieu c� hop le kh�ng
-    if (tempKp < 0 || tempKp > 10 ||
-        tempKi < 0 || tempKi > 5 ||
-        tempKd < 0 || tempKd > 5 ) {
-        // Neu du lieu kh�ng hop le, dat gi� tri mac dinh
-        pid->Kp = 0.5;
-        pid->Ki = 0.01;
-        pid->Kd = 0.03;
-    } else {
-        // Neu du lieu hop le, se dung gi� tri tu flash
-        pid->Kp = tempKp;
-        pid->Ki = tempKi;
-        pid->Kd = tempKd;
+    // Đóng gói dữ liệu
+    settings.position_kp = position->Kp;
+    settings.position_ki = position->Ki;
+    settings.position_kd = position->Kd;
+    settings.speed_kp = speed->Kp;
+    settings.speed_ki = speed->Ki;
+    settings.speed_kd = speed->Kd;
+    settings.pitch_kp = pitch->Kp;
+    settings.pitch_ki = pitch->Ki;
+    settings.pitch_kd = pitch->Kd;
+    settings.yaw_kp = yaw->Kp;
+    settings.yaw_ki = yaw->Ki;
+    settings.yaw_kd = yaw->Kd;
+
+    // Tính checksum
+    settings.checksum = Calculate_Checksum(&settings);
+
+    // Mở khóa Flash
+    HAL_FLASH_Unlock();
+
+    // Xóa sector
+    EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
+    EraseInitStruct.PageAddress = FLASH_SECTOR_ADDRESS;
+    EraseInitStruct.NbPages = 1;
+    status = HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError);
+    if (status != HAL_OK)
+    {
+        HAL_FLASH_Lock();
+        return status;
     }
+
+    // Ghi dữ liệu
+    uint32_t *source = (uint32_t *)&settings;
+    uint32_t address = FLASH_SECTOR_ADDRESS;
+
+    for (uint32_t i = 0; i < sizeof(PIDSettings_t) / 4; i++)
+    {
+        status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, address, source[i]);
+        if (status != HAL_OK)
+        {
+            HAL_FLASH_Lock();
+            return status;
+        }
+        address += 4;
+    }
+
+    HAL_FLASH_Lock();
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef Flash_Read_PID(PID_t *position, PID_t *speed, PID_t *pitch, PID_t *yaw)
+{
+    PIDSettings_t settings;
+    uint32_t *source = (uint32_t *)FLASH_SECTOR_ADDRESS;
+    uint32_t *dest = (uint32_t *)&settings;
+
+    // Đọc dữ liệu từ Flash
+    for (uint32_t i = 0; i < sizeof(PIDSettings_t) / 4; i++)
+    {
+        dest[i] = source[i];
+    }
+
+    // Kiểm tra checksum
+    uint32_t calculated_checksum = Calculate_Checksum(&settings);
+    if (calculated_checksum != settings.checksum)
+    {
+        Flash_Load_Default_PID(position, speed, pitch, yaw);
+        return HAL_ERROR;
+    }
+
+    // Cập nhật các giá trị PID
+    position->Kp = settings.position_kp;
+    position->Ki = settings.position_ki;
+    position->Kd = settings.position_kd;
+
+    speed->Kp = settings.speed_kp;
+    speed->Ki = settings.speed_ki;
+    speed->Kd = settings.speed_kd;
+
+    pitch->Kp = settings.pitch_kp;
+    pitch->Ki = settings.pitch_ki;
+    pitch->Kd = settings.pitch_kd;
+
+    yaw->Kp = settings.yaw_kp;
+    yaw->Ki = settings.yaw_ki;
+    yaw->Kd = settings.yaw_kd;
+
+    return HAL_OK;
+}
+
+void Flash_Load_Default_PID(PID_t *position, PID_t *speed, PID_t *pitch, PID_t *yaw)
+{
+    // Giá trị mặc định cho các bộ PID
+    position->Kp = 0.0f;
+    position->Ki = 0.0f;
+    position->Kd = 0.0f;
+
+    speed->Kp = 0.0f;
+    speed->Ki = 0.0f;
+    speed->Kd = 0.0f;
+
+    pitch->Kp = 0.0f;
+    pitch->Ki = 0.0f;
+    pitch->Kd = 0.0f;
+
+    yaw->Kp = 0.0f;
+    yaw->Ki = 0.0f;
+    yaw->Kd = 0.0f;
 }

@@ -41,6 +41,8 @@ controlleftmotor\cmsis_os2.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_
 controlleftmotor\cmsis_os2.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h
 controlleftmotor\cmsis_os2.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash.h
 controlleftmotor\cmsis_os2.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
+controlleftmotor\cmsis_os2.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 controlleftmotor\cmsis_os2.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
 controlleftmotor\cmsis_os2.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
 controlleftmotor\cmsis_os2.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
+controlleftmotor\cmsis_os2.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h

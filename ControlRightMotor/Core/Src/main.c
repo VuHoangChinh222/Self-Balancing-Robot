@@ -19,12 +19,13 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "string.h"
 #include "math.h"
 #include "pid.h"
+#include <stdlib.h>
+#include "flashStorage.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,48 +48,60 @@ CAN_HandleTypeDef hcan;
 
 TIM_HandleTypeDef htim1;
 
+UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
+DMA_HandleTypeDef hdma_usart2_tx;
+
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+    .name = "defaultTask",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityNormal,
 };
 /* Definitions for TaskReceiveCAN */
 osThreadId_t TaskReceiveCANHandle;
 const osThreadAttr_t TaskReceiveCAN_attributes = {
-  .name = "TaskReceiveCAN",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityRealtime,
+    .name = "TaskReceiveCAN",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityRealtime,
 };
 /* Definitions for TaskMControl */
 osThreadId_t TaskMControlHandle;
 const osThreadAttr_t TaskMControl_attributes = {
-  .name = "TaskMControl",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+    .name = "TaskMControl",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityNormal,
 };
 /* Definitions for TaskReadHall */
 osThreadId_t TaskReadHallHandle;
 const osThreadAttr_t TaskReadHall_attributes = {
-  .name = "TaskReadHall",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityRealtime,
+    .name = "TaskReadHall",
+    .stack_size = 128 * 4,
+    .priority = (osPriority_t)osPriorityRealtime,
 };
 /* USER CODE BEGIN PV */
 
 //------------------------------------
 
-PID_t PID_Position, PID_SpeedRight, PID_Pitch, PID_Rotate;
+PID_t PID_Position, PID_SpeedRight, PID_Pitch, PID_Yaw;
 
-#define CONTROL_DT 0.005f // 10 ms
+#define CONTROL_DT 0.001f // 1 ms
+#define MAX_SPEED_COMMAND 100.0f
 #define JOYSTICK_DEADZONE 5.0f
 //--------------------------------------
-#define MAX_GYRO_RATE 150.0f   // Giới hạn tốc độ góc tối đa
+#define MAX_TILT_ANGLE 50.0f    // Góc nghiêng tối đa cho phép
+#define MAX_MOVEMENT_TILT 15.0f // Góc nghiêng tối đa cho di chuyển
+#define JOYSTICK_TO_TILT 0.15f  // Hệ số chuyển đổi joystick sang góc nghiêng
 //--------------------------------------
-#define BASE_PWM_FILTER_ALPHA 0.3f // Hệ số làm mượt cơ bản
-#define FAST_PWM_FILTER_ALPHA 0.5f // Hệ số làm mượt khi góc lớn
-#define MAX_PWM_CHANGE 30.0f       // Giới hạn thay đổi PWM mỗi chu kỳ
+#define MAX_GYRO_RATE 150.0f   // Giới hạn tốc độ góc tối đa
+#define RECOVERY_KP_SCALE 0.7f // Hệ số giảm Kp khi phát hiện giật
+#define RECOVERY_KD_SCALE 1.5f // Hệ số tăng Kd khi phát hiện giật
+//--------------------------------------
+#define BASE_PWM_FILTER_ALPHA 0.6f // Hệ số làm mượt cơ bản
+#define FAST_PWM_FILTER_ALPHA 0.9f // Hệ số làm mượt khi góc lớn
+#define ANGLE_THRESHOLD 5.0f       // Ngưỡng góc để thay đổi hệ số
+#define MAX_PWM_CHANGE 50.0f       // Giới hạn thay đổi PWM mỗi chu kỳ
 //-----------------------------------
 #define MAX_PWM_OUTPUT 999.0f
 #define COUNTS_PER_REV 90.0f         // 90 bước tương ứng 1 vòng quay
@@ -102,27 +115,34 @@ volatile int8_t direction = 0;      // Huong quay cua dong co
 volatile float positionOffset = 0;  // Vi tri offset
 volatile uint8_t lastHallState = 0; // Trang thai hall sensor cu
 volatile int32_t hallCounter = 0;   // dem so buoc (co dau: duong la quay thuan, am la quay nguoc)
+float anglemotor = 0;               // Goc quay cua dong co
 volatile uint8_t u = 0;
 volatile uint8_t v = 0;
 volatile uint8_t w = 0;
 uint8_t checkrunFirtTime = 0; // Bien kiem tra lan dau doc Hall sensor
 // CAN
-uint8_t RxData[4] = {0};
-volatile int32_t joyStickX = 0, joyStickY = 0;
+uint8_t RxData[3] = {0};
+volatile int16_t joyStickX = 0, joyStickY = 0;
 CAN_RxHeaderTypeDef RxHeader;
 volatile char *command = "";
-volatile float angleY = 0;
-volatile float gyroY = 0; // Gy MPU6050 (don vi: deg/s)
-osMutexId_t joystickXMutexHandle,joystickYMutexHandle;
-//-------------------------------------
-uint8_t checkBalanceAfterTurnOn = 0; // Bien kiem tra can bang sau khi bat nguon
+// UART
+#define RX_BUF_SIZE 128
+uint8_t rxBuffer[RX_BUF_SIZE];
+volatile uint16_t rxIndex = 0;
+volatile float angleY = 0; // pitch
+volatile float angleZ = 0; // yaw
+volatile float gyroY = 0;  // Gy MPU6050 (don vi: deg/s)
+volatile float gyroZ = 0;  // Gz
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_USART2_UART_Init(void);
 void StartDefaultTask(void *argument);
 void ReceiveCAN(void *argument);
 void MotorControl(void *argument);
@@ -148,7 +168,8 @@ float SmoothPWM(float prev, float target);
 // ==== Clamp PWM Output ====
 float ClampPWM(float pwm);
 void ComputeMotorSpeed(void);
-float GetNonlinearKp(float angle);
+void process_packet(uint8_t *data, uint16_t length);
+float custom_atof(const char *str);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -157,9 +178,9 @@ float GetNonlinearKp(float angle);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
 
@@ -185,37 +206,18 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_CAN_Init();
   MX_TIM1_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  // Doc thong so PID tu bo nho flash
+  if (Flash_Read_PID(&PID_Position, &PID_SpeedRight, &PID_Pitch, &PID_Yaw) != HAL_OK)
+  {
+    // Nếu đọc lỗi, load giá trị mặc định
+    Flash_Load_Default_PID(&PID_Position, &PID_SpeedRight, &PID_Pitch, &PID_Yaw);
+  }
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  // PID cho vi tri
-  PID_Position.Kp = 0.0;
-  PID_Position.Ki = 0.0;
-  PID_Position.Kd = 0.0;
-  // PID cho toc do dong co trai dua vao joystick Y
-//	PID_SpeedRight.Kp = 0.15;
-//	PID_SpeedRight.Ki = 0.001;
-//	PID_SpeedRight.Kd = 0.05;
-//	// PID can bang
-//	PID_Pitch.Kp = 16.0;
-//	PID_Pitch.Ki = 0.0;
-//	PID_Pitch.Kd = 1.5;
-//	// PID xoay
-//	PID_Rotate.Kp = 1.0;
-//	PID_Rotate.Ki = 0.0;
-//	PID_Rotate.Kd = 0.05;
-  PID_SpeedRight.Kp = 0.0;
-  PID_SpeedRight.Ki = 0.0;
-  PID_SpeedRight.Kd = 0.0;
-  // PID can bang
-  PID_Pitch.Kp = 13.5;
-  PID_Pitch.Ki = 0.0;
-  PID_Pitch.Kd = 0.1;
-  // PID xoay
-  PID_Rotate.Kp = 0.0;
-  PID_Rotate.Ki = 0.0;
-  PID_Rotate.Kd = 0.0;
   // Bat yeu cau ngat khi du lieu CAN nhan ve duoc luu tru goi tin o FIFO1 khi dung ID
   if (HAL_CAN_Start(&hcan) != HAL_OK)
   {
@@ -225,6 +227,9 @@ int main(void)
   // Enable CAN RX interrupt
   HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
+  // UART
+  HAL_UART_Init(&huart2);
+  HAL_UART_Receive_DMA(&huart2, rxBuffer, RX_BUF_SIZE);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -232,16 +237,6 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
-	joystickXMutexHandle = osMutexNew(NULL);
-  if (joystickXMutexHandle == NULL)
-  {
-    Error_Handler();
-  }
-	joystickYMutexHandle = osMutexNew(NULL);
-  if (joystickYMutexHandle == NULL)
-  {
-    Error_Handler();
-  }
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -294,17 +289,17 @@ int main(void)
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
@@ -318,9 +313,8 @@ void SystemClock_Config(void)
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+   */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
@@ -333,10 +327,10 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief CAN Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief CAN Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_CAN_Init(void)
 {
 
@@ -351,7 +345,7 @@ static void MX_CAN_Init(void)
   hcan.Init.Prescaler = 9;
   hcan.Init.Mode = CAN_MODE_NORMAL;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_6TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_2TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
   hcan.Init.AutoBusOff = DISABLE;
@@ -381,14 +375,13 @@ static void MX_CAN_Init(void)
   HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
   /* USER CODE END CAN_Init 2 */
-
 }
 
 /**
-  * @brief TIM1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief TIM1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_TIM1_Init(void)
 {
 
@@ -405,9 +398,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 3600-1;
+  htim1.Init.Prescaler = 1800 - 1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 1000-1;
+  htim1.Init.Period = 1000 - 1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -456,19 +449,68 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
-
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief USART2 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 1000000;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+}
+
+/**
+ * Enable DMA controller clock
+ */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
+  /* DMA1_Channel7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
+}
+
+/**
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
+  /* USER CODE BEGIN MX_GPIO_Init_1 */
+  /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -493,71 +535,40 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : DIR_Pin BREAK_Pin */
-  GPIO_InitStruct.Pin = DIR_Pin|BREAK_Pin;
+  GPIO_InitStruct.Pin = DIR_Pin | BREAK_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : HALL_U_Pin HALL_V_Pin HALL_W_Pin */
-  GPIO_InitStruct.Pin = HALL_U_Pin|HALL_V_Pin|HALL_W_Pin;
+  GPIO_InitStruct.Pin = HALL_U_Pin | HALL_V_Pin | HALL_W_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
+  /* USER CODE BEGIN MX_GPIO_Init_2 */
+  /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+//------------------------------------------------------------------
+// Ham xu ly tin hieu CAN
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-  int16_t raw_angle = 0;
-  int16_t raw_gyroY = 0;
+  int16_t rawjoyStickX = 0;
+  int16_t rawjoyStickY = 0;
   if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
   {
     switch (RxHeader.StdId)
     {
-    case 0x446: // Nhan goc Y
-      // Ghep 2 byte thanh 1 gia tri 16 bit
-      raw_angle = ((int16_t)RxData[2] << 8) | RxData[3];
-      // Chuyen doi goc Y thanh goc thuc te co dau
-      raw_angle = (RxData[1] ? 1 : -1) * raw_angle;
-			if(raw_angle>13000 || raw_angle<-13000)
-				raw_angle=0;
-      angleY = (float)raw_angle / 100;
-      break;
     case 0x447: // Nhan gia tri joystick X
-      // Luu tru gia tri joystick X
-      if (RxData[0] != 22)
-      {
-        joyStickX = 0;
-      }
-      else
-      {
-				osMutexAcquire(joystickXMutexHandle, osWaitForever);
-				int16_t rawjoyStickX= RxData[1] ? (((int16_t)RxData[2] << 8) | RxData[3]) : -(((int16_t)RxData[2] << 8) | RxData[3]);
-        joyStickX = (rawjoyStickX>100||rawjoyStickX<-100)?0:rawjoyStickX;
-				osMutexRelease(joystickXMutexHandle);
-      }
+      rawjoyStickX = RxData[0] ? (((int16_t)RxData[1] << 8) | RxData[2]) : -(((int16_t)RxData[1] << 8) | RxData[2]);
+      joyStickX = (rawjoyStickX > 100 || rawjoyStickX < -100) ? 0 : rawjoyStickX;
       break;
     case 0x448: // Nhan gia tri joystick Y
-      if (RxData[0] != 32)
-      {
-        joyStickY = 0;
-      }
-      else
-      {
-				osMutexAcquire(joystickYMutexHandle,osWaitForever);
-				int16_t rawjoyStickY= RxData[1] ? (((int16_t)RxData[2] << 8) | RxData[3]) : -(((int16_t)RxData[2] << 8) | RxData[3]);
-        joyStickY = (rawjoyStickY>100||rawjoyStickY<-100)?0:rawjoyStickY;
-				osMutexRelease(joystickYMutexHandle);
-      }
-      break;
-    case 0x449: // Nhan gia tri gyro Y
-      raw_gyroY = ((int16_t)RxData[2] << 8) | RxData[3];
-      raw_gyroY = (RxData[1] ? 1 : -1) * raw_gyroY; // Chuyen doi goc Y thanh goc thuc te co dau
-      gyroY = (float)raw_gyroY / 100;
+      rawjoyStickY = RxData[0] ? (((int16_t)RxData[1] << 8) | RxData[2]) : -(((int16_t)RxData[1] << 8) | RxData[2]);
+      joyStickY = (rawjoyStickY > 100 || rawjoyStickY < -100) ? 0 : rawjoyStickY;
       break;
     default:
       Error_Handler();
@@ -570,17 +581,127 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
   }
 }
 
-void updateMotors(float PWM)
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	if((PWM >= -2 && PWM <= 2) || angleY==0){
-		HAL_GPIO_WritePin(BREAK_GPIO_Port,BREAK_Pin,GPIO_PIN_SET);
-	}else{
-		HAL_GPIO_WritePin(BREAK_GPIO_Port,BREAK_Pin,GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM <= 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
-		__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)fabsf(PWM));
-	}
+  if (huart->Instance == USART2)
+  {
+    // Tìm ký tự newline
+    for (uint16_t i = 0; i < RX_BUF_SIZE; i++)
+    {
+      if (rxBuffer[i] == '\n')
+      {
+        process_packet(rxBuffer, i);
+
+        // Di chuyển dữ liệu còn lại lên đầu buffer
+        uint16_t remaining = RX_BUF_SIZE - i - 1;
+        memmove(rxBuffer, rxBuffer + i + 1, remaining);
+        rxIndex = remaining;
+        break;
+      }
+    }
+
+    // Tiếp tục nhận
+    HAL_UART_Receive_DMA(&huart2, rxBuffer + rxIndex, RX_BUF_SIZE - rxIndex);
+  }
 }
 
+float custom_atof(const char *str)
+{
+  float value = 0.0f;
+  float sign = 1.0f;
+  float fraction_factor = 0.1f;
+  uint8_t decimal_found = 0;
+
+  // Xử lý dấu âm
+  if (*str == '-')
+  {
+    sign = -1.0f;
+    str++;
+  }
+
+  while (*str)
+  {
+    if (*str == '.')
+    {
+      decimal_found = 1;
+    }
+    else if (*str >= '0' && *str <= '9')
+    {
+      if (!decimal_found)
+      {
+        value = value * 10.0f + (*str - '0');
+      }
+      else
+      {
+        value += (*str - '0') * fraction_factor;
+        fraction_factor *= 0.1f;
+      }
+    }
+    else if (*str == ',' || *str == '\n')
+    {
+      break;
+    }
+    str++;
+  }
+
+  return sign * value;
+}
+
+void process_packet(uint8_t *data, uint16_t length)
+{
+  uint8_t temp = data[length];
+  data[length] = 0; // Tạm thời kết thúc chuỗi
+
+  // Phân tích dữ liệu
+  float ay = 0, az = 0, gy = 0, gz = 0;
+  char *token = strtok((char *)data, ",");
+
+  while (token)
+  {
+    if (strncmp(token, "ay:", 3) == 0)
+    {
+      ay = custom_atof(token + 3);
+    }
+    else if (strncmp(token, "az:", 3) == 0)
+    {
+      az = custom_atof(token + 3);
+    }
+    else if (strncmp(token, "gy:", 3) == 0)
+    {
+      gy = custom_atof(token + 3);
+    }
+    else if (strncmp(token, "gz:", 3) == 0)
+    {
+      gz = custom_atof(token + 3);
+    }
+    token = strtok(NULL, ",");
+  }
+
+  data[length] = temp; // Khôi phục byte gốc
+
+  // Sử dụng dữ liệu ở đây
+  angleY = ay;
+  angleZ = az;
+  gyroY = gy;
+  gyroZ = gz;
+}
+
+// Ham cap nhat PWM cho dong co
+void updateMotors(float PWM)
+{
+  float target_abs_pwm = fminf(fabsf(PWM), MAX_PWM_OUTPUT);
+  if (target_abs_pwm >= -1 && target_abs_pwm <= 1)
+  {
+    HAL_GPIO_WritePin(BREAK_GPIO_Port, BREAK_Pin, GPIO_PIN_SET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(BREAK_GPIO_Port, BREAK_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, PWM > 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)fabsf(target_abs_pwm));
+  }
+}
+// Ham doc trang thai hall sensor
 uint8_t readHallState(void)
 {
   // Doc trang thai hall sensor
@@ -590,7 +711,7 @@ uint8_t readHallState(void)
   w = HAL_GPIO_ReadPin(HALL_W_GPIO_Port, HALL_W_Pin);
   return (u << 2) | (v << 1) | w;
 }
-
+// Ham xac dinh huong quay dua vao su chuyen doi trang thai
 int8_t getDirection(uint8_t last, uint8_t current)
 {
   // Bang chuyen doi trang thai hop le
@@ -614,13 +735,13 @@ int8_t getDirection(uint8_t last, uint8_t current)
   return 0; // Trang thai khong hop le
   //	return current!= last ? 1:0;
 }
-
+// Ham tinh goc quay cua dong co
 float getMotorAngle(void)
 {
   return ((float)hallCounter / 90.0f) * 360.0f; // Hoac: hallCounter * 8.0f;
 }
 
-// ==== Clamp PWM Output ====
+// Ham gioi han PWM
 float ClampPWM(float pwm)
 {
   if (pwm > MAX_PWM_OUTPUT)
@@ -629,167 +750,177 @@ float ClampPWM(float pwm)
     return -MAX_PWM_OUTPUT;
   return pwm;
 }
-
-// ==== PWM Smoothing ====
+// Ham lam muot PWM
 float SmoothPWM(float prev, float target)
 {
-	float currentAngle = angleY;
-	float currentGyro = gyroY;
-	float alpha=0;
-	float max_change=0;
+  float currentAngle = angleY;
+  float currentGyro = gyroY;
+  float alpha = 0;
+  float max_change = 0;
 
-	// Điều chỉnh giới hạn thay đổi PWM theo góc nghiêng
-	if (fabsf(currentAngle) > 30.0f) {
-			max_change = MAX_PWM_CHANGE * 4.0f;  // Tăng giới hạn nhiều hơn
-			alpha = 1.0f;                        // Không làm mượt ở góc lớn
-	}
-	else if (fabsf(currentAngle) > 15.0f) {
-			max_change = MAX_PWM_CHANGE * 3.0f;
-			alpha = FAST_PWM_FILTER_ALPHA;
-	}
-	else if (fabsf(currentAngle) > 5.0f) {
-			max_change = MAX_PWM_CHANGE * 2.0f;
-			alpha = (BASE_PWM_FILTER_ALPHA + FAST_PWM_FILTER_ALPHA) / 2;
-	}
-	else {
-			max_change = MAX_PWM_CHANGE;
-			alpha = BASE_PWM_FILTER_ALPHA;
-	}
+  // Điều chỉnh giới hạn thay đổi PWM theo góc nghiêng
+  if (fabsf(currentAngle) > 30.0f)
+  {
+    max_change = MAX_PWM_CHANGE * 4.0f; // Tăng giới hạn nhiều hơn
+    alpha = 1.0f;                       // Không làm mượt ở góc lớn
+  }
+  else if (fabsf(currentAngle) > 15.0f)
+  {
+    max_change = MAX_PWM_CHANGE * 3.0f;
+    alpha = FAST_PWM_FILTER_ALPHA;
+  }
+  else if (fabsf(currentAngle) > 5.0f)
+  {
+    max_change = MAX_PWM_CHANGE * 2.0f;
+    alpha = (BASE_PWM_FILTER_ALPHA + FAST_PWM_FILTER_ALPHA) / 2;
+  }
+  else
+  {
+    max_change = MAX_PWM_CHANGE;
+    alpha = BASE_PWM_FILTER_ALPHA;
+  }
 
-	float delta = target - prev;
-	if (delta > max_change) delta = max_change;
-	if (delta < -max_change) delta = -max_change;
+  float delta = target - prev;
+  if (delta > max_change)
+    delta = max_change;
+  if (delta < -max_change)
+    delta = -max_change;
 
-	return prev + alpha * delta;
+  return prev + alpha * delta;
 }
-/* Hàm tính tốc độ động cơ — gọi mỗi khi controlLoop chạy */
+// Ham tinh toan toc do dong co
 void ComputeMotorSpeed(void)
 {
   static int32_t lastHallCount = 0;
   int32_t deltaCount = hallCounter - lastHallCount;
 
-  // Tính vòng/giây (RPS - Revolutions Per Second)
-  // deltaCount: số xung trong 10ms (CONTROL_DT = 0.01s)
-  // deltaCount * 100: số xung trong 1 giây
-  // COUNTS_PER_REV = 90 xung/vòng
-  motorSpeedRPS = ((float)deltaCount * (1.0f / CONTROL_DT)) / COUNTS_PER_REV;
+  // 1) Tính rev/s (revolutions per second)
+  motorSpeedRPS = (deltaCount / COUNTS_PER_REV) / CONTROL_DT;
 
-  // Tính độ/giây (DPS - Degrees Per Second)
-  motorSpeedDPS = motorSpeedRPS * 360.0f;
+  // 2) Nếu muốn độ/giây (degrees per second)
+  motorSpeedDPS = (deltaCount * 360.0f / COUNTS_PER_REV) / CONTROL_DT;
 
   // Cập nhật cho lần sau
   lastHallCount = hallCounter;
 }
-
-float GetNonlinearKp(float angle)
-{
-  float base_Kp = 20;
-  float scale = 1;
-
-  if (fabsf(angle) < 5.0f)
-  {
-    // Góc nhỏ: tăng Kp để có đủ lực
-    scale = 0.8f;
-  }
-
-  return base_Kp * scale;
-}
-
+// Hàm điều khiển chính
 void controlLoop(void)
 {
-	float pwm_output = 0.0f; // Bien luu tru gia tri PWM dau ra
   float currentAngle = angleY;
   float currentGyro = gyroY;
   ComputeMotorSpeed();
-  float target_speed = 0.0f; // Toc do muc tieu duoc tinh toan tu joystick Y
-  float balance_cmd = 0.0f;  // Lenh can bang (balance command)
-  float target_angle = 0.0f; // Goc muc tieu duoc tinh toan tu PID_SpeedRight
-  float turn_cmd = 0.0f;     // Tinh toan lenh xoay (turn command)
 
-	if (checkBalanceAfterTurnOn && currentAngle >= -45 && currentAngle <= 45){
-		// 1. LLay tin hieu tu joystick Y
-    if (fabsf((float_t)joyStickY) > JOYSTICK_DEADZONE && fabsf((float_t)joyStickY) <= 100)
+  // Kiểm tra góc an toàn
+  if (fabsf(currentAngle) < MAX_TILT_ANGLE)
+  {
+    float speed_cmd = 0;   // Tốc độ mong muốn từ PID tốc độ
+    float balance_cmd = 0; // Moment cân bằng từ PID góc
+    float pwm_output = 0;  // PWM cuối cùng
+
+    static int32_t initialPosition = 0;
+    static uint8_t isHolding = 0;
+    static uint8_t isInitialized = 0;
+    int32_t currentSpeed = motorSpeedRPS * COUNTS_PER_REV;
+
+    // 1. Điều khiển vị trí (tầng ngoài nhất)
+    if (fabsf((float_t)joyStickY) > JOYSTICK_DEADZONE)
     {
-      target_speed = joyStickY; // Chuyển đổi tín hiệu joystick sang tốc độ mục tiêu
-      target_angle = PID_Compute(&PID_SpeedRight, target_speed, motorSpeedRPS, CONTROL_DT);
-		}
-
-    // 2. Tinh toan lenh can bang
-		float dynamic_Kp = GetNonlinearKp(currentAngle);
-    PID_Pitch.Kp = dynamic_Kp;
-    balance_cmd = PID_Compute(&PID_Pitch, target_angle, currentAngle, CONTROL_DT);
-
-    // 3. Xử lý quay (turning) dựa vào joyStickX
-    if (fabsf((float_t)joyStickX) > JOYSTICK_DEADZONE && fabsf((float_t)joyStickX) <= 100)
+      // Chế độ điều khiển tốc độ từ joystick
+      float velocity_target = (joyStickY / 100.0f) * MAX_SPEED_COMMAND;
+      speed_cmd = PID_Compute(&PID_SpeedRight, velocity_target, currentSpeed, CONTROL_DT);
+      isHolding = 0;
+      isInitialized = 0;
+    }
+    else if (fabsf(currentAngle) < 15.0f)
     {
-      turn_cmd = PID_Compute(&PID_Rotate, joyStickX, 0.0f, CONTROL_DT);
+      // Chế độ giữ vị trí
+      if (!isInitialized)
+      {
+        initialPosition = hallCounter;
+        isInitialized = 1;
+        isHolding = 1;
+        PID_Reset(&PID_Position);
+        PID_Reset(&PID_SpeedRight);
+      }
+
+      if (isHolding)
+      {
+        // PID vị trí -> tốc độ mong muốn
+        float position_cmd = PID_Compute(&PID_Position, initialPosition, hallCounter, CONTROL_DT);
+        position_cmd = fminf(fmaxf(position_cmd, -30.0f), 30.0f);
+
+        // PID tốc độ -> moment cần thiết
+        speed_cmd = PID_Compute(&PID_SpeedRight, position_cmd, currentSpeed, CONTROL_DT);
+        speed_cmd = fminf(fmaxf(speed_cmd, -30.0f), 30.0f);
+      }
     }
 
-    // 4. Tong hop lenh can bang va lenh xoay
-    pwm_output = balance_cmd - turn_cmd;
+    // 2. Điều khiển cân bằng (tầng trong cùng)
+    float base_Kp = 24.0f;
+    float base_Kd = 0.8f;
+    float Kp = base_Kp;
+    float Kd = base_Kd;
 
-    // 5. Gioi han va lam muot PWM
+    // Điều chỉnh hệ số theo góc nghiêng
+    if (fabsf(currentAngle) > 20.0f)
+    {
+      Kp = base_Kp * 1.5f; // Tăng mạnh khi góc lớn
+      Kd = base_Kd * 1.3f;
+    }
+    else if (fabsf(currentAngle) > 10.0f)
+    {
+      Kp = base_Kp * 1.2f;
+      Kd = base_Kd * 1.1f;
+    }
+    else if (fabsf(currentAngle) < 5.0f)
+    {
+      Kp = base_Kp * 0.8f; // Giảm khi gần cân bằng
+      Kd = base_Kd * 1.2f;
+    }
+
+    // Xử lý chuyển động đột ngột
+    if (fabsf(currentGyro) > MAX_GYRO_RATE)
+    {
+      Kp *= RECOVERY_KP_SCALE;
+      Kd *= RECOVERY_KD_SCALE;
+    }
+
+    // Tính toán moment cân bằng
+    float target_angle = 0;
+    if (fabsf((float_t)joyStickY) > JOYSTICK_DEADZONE)
+    {
+      target_angle = -(joyStickY / 100.0f) * MAX_MOVEMENT_TILT;
+    }
+    float angleError = currentAngle - target_angle;
+    balance_cmd = Kp * angleError + Kd * currentGyro;
+
+    // 3. Tổng hợp các thành phần điều khiển
+    float balance_weight = 1.0f;
+    float speed_weight = 0.3f;
+    pwm_output = balance_weight * balance_cmd + speed_weight * speed_cmd;
+
+    // 4. Xử lý quay (turning)
+    if (fabsf((float_t)joyStickX) <= 100)
+    {
+      float base_turn_power = 200.0f;
+      float angle_factor = 1.0f - (fabsf(currentAngle) / MAX_TILT_ANGLE);
+      float turn_cmd = (joyStickX / 100.0f) * base_turn_power * angle_factor;
+      pwm_output += turn_cmd;
+    }
+
+    // 5. Giới hạn và làm mượt PWM
     pwm_output = ClampPWM(pwm_output);
-//    pwm_right_filtered = SmoothPWM(pwm_right_filtered, pwm_output);
-//    pwm_right_filtered = ClampPWM(pwm_right_filtered);
+    pwm_right_filtered = SmoothPWM(pwm_right_filtered, pwm_output);
+    pwm_right_filtered = ClampPWM(pwm_right_filtered);
 
-    // 6. Xuat PWM ra dong co
-    updateMotors(pwm_output);
-	}else if(!checkBalanceAfterTurnOn){
-		if (currentAngle >= -2 && currentAngle <= 2)
-    {
-      checkBalanceAfterTurnOn = 1; // Bat dau can bang khi goc trong khoang -2 den 2 do
-      return;
-    }
-    // 1. Lay tin hieu tu joystick Y
-    if (fabsf((float_t)joyStickY) > JOYSTICK_DEADZONE && fabsf((float_t)joyStickY) <= 100)
-    {
-      target_speed = joyStickY; // Chuyển đổi tín hiệu joystick sang tốc độ mục tiêu
-			target_angle = PID_Compute(&PID_SpeedRight, target_speed, motorSpeedRPS, CONTROL_DT);
-    }
-
-    // 2. Tinh toan lenh can bang
-    balance_cmd = PID_Compute(&PID_Pitch, target_angle, currentAngle, CONTROL_DT);
-
-		// Thêm giới hạn tốc độ thay đổi moment
-//		static float last_balance_cmd = 0;
-//		float max_cmd_change = 100.0f;  // Điều chỉnh giá trị này nếu cần
-
-//		if (balance_cmd - last_balance_cmd > max_cmd_change) {
-//			balance_cmd = last_balance_cmd + max_cmd_change;
-//		}
-//		else if (balance_cmd - last_balance_cmd < -max_cmd_change) {
-//			balance_cmd = last_balance_cmd - max_cmd_change;
-//		}
-
-//		last_balance_cmd = balance_cmd;
-		
-    // 3. Xử lý quay (turning) dựa vào joyStickX
-    if (fabsf((float_t)joyStickX) > JOYSTICK_DEADZONE && fabsf((float_t)joyStickX) <= 100)
-    {
-      turn_cmd = PID_Compute	(&PID_Rotate, joyStickX, 0.0f, CONTROL_DT);
-    }
-
-    // 4. Tong hop lenh can bang va lenh xoay
-    pwm_output = balance_cmd - turn_cmd;
-
-    // 5. Gioi han va lam muot PWM
-    pwm_output = ClampPWM(pwm_output);
-//    pwm_right_filtered = SmoothPWM(pwm_right_filtered, pwm_output);
-//    pwm_right_filtered = ClampPWM(pwm_right_filtered);
-
-    // 6. Xuat PWM ra dong co
-    updateMotors(pwm_output);
-	}
+    // 6. Xuất PWM ra động cơ
+    updateMotors(pwm_right_filtered);
+  }
   else
   {
     // Dừng động cơ khi vượt quá góc an toàn
     updateMotors(0);
     pwm_right_filtered = 0;
-		PID_Reset(&PID_Position);
-    PID_Reset(&PID_SpeedRight);
-    PID_Reset(&PID_Pitch);
-    PID_Reset(&PID_Rotate);
   }
 }
 /* USER CODE END 4 */
@@ -844,7 +975,7 @@ void MotorControl(void *argument)
   for (;;)
   {
     controlLoop();
-    osDelay(5);
+    osDelay(2);
   }
   /* USER CODE END MotorControl */
 }
@@ -885,9 +1016,9 @@ void ReadHall(void *argument)
 }
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -899,14 +1030,14 @@ void Error_Handler(void)
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */

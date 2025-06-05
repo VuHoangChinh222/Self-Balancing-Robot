@@ -16,8 +16,10 @@
 "controlleftmotor\stm32f1xx_hal_flash.o"
 "controlleftmotor\stm32f1xx_hal_flash_ex.o"
 "controlleftmotor\stm32f1xx_hal_exti.o"
+"controlleftmotor\stm32f1xx_hal_i2c.o"
 "controlleftmotor\stm32f1xx_hal_tim.o"
 "controlleftmotor\stm32f1xx_hal_tim_ex.o"
+"controlleftmotor\stm32f1xx_hal_uart.o"
 "controlleftmotor\system_stm32f1xx.o"
 "controlleftmotor\croutine.o"
 "controlleftmotor\event_groups.o"
@@ -30,6 +32,8 @@
 "controlleftmotor\heap_4.o"
 "controlleftmotor\port.o"
 "controlleftmotor\pid.o"
+"controlleftmotor\mpu6050.o"
+"controlleftmotor\flashstorage.o"
 --strict --scatter "ControlLeftMotor\ControlLeftMotor.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers

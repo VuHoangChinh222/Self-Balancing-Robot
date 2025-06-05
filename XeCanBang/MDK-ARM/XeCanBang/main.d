@@ -41,9 +41,11 @@ xecanbang\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrapper
 xecanbang\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h
 xecanbang\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h
 xecanbang\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h
-xecanbang\main.o: ../MDK-ARM/mpu6050.h
-xecanbang\main.o: ../MDK-ARM/uart_control.h
 xecanbang\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 xecanbang\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 xecanbang\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 xecanbang\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+xecanbang\main.o: ../MDK-ARM/74165.h
+xecanbang\main.o: ../MDK-ARM/ssd1306.h
+xecanbang\main.o: ../MDK-ARM/fonts.h
+xecanbang\main.o: ../MDK-ARM/pid.h

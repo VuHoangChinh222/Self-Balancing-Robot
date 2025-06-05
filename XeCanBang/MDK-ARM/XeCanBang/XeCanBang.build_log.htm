@@ -22,16 +22,55 @@ Dialog DLL:      TCM.DLL V1.46.0.0
  
 <h2>Project:</h2>
 F:\Embedded\BalanceCar\XeCanBang\MDK-ARM\XeCanBang.uvprojx
-Project File Date:  05/28/2025
+Project File Date:  06/06/2025
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 6 (build 750)', folder: 'D:\Keil_v5\ARM\ARMCC\Bin'
 Build target 'XeCanBang'
 compiling main.c...
+../Core/Src/main.c(221): warning:  #223-D: function "Flash_Write_PID" declared implicitly
+    Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+../Core/Src/main.c(742): warning:  #188-D: enumerated type mixed with another type
+    SSD1306_Puts("^_^", &Font_16x26, 1);
+../Core/Src/main.c(771): warning:  #188-D: enumerated type mixed with another type
+              SSD1306_Puts("^_^", &Font_16x26, 1);
+../Core/Src/main.c(737): warning:  #177-D: variable "debugStr"  was declared but never referenced
+    char debugStr[50];
+../Core/Src/main.c(879): warning:  #188-D: enumerated type mixed with another type
+        SSD1306_Puts("->", &Font_7x10, 1);
+../Core/Src/main.c(886): warning:  #188-D: enumerated type mixed with another type
+      SSD1306_Puts(menu_items[i], &Font_7x10, 1);
+../Core/Src/main.c(900): warning:  #223-D: function "Flash_Read_PID" declared implicitly
+    HAL_StatusTypeDef status = Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+../Core/Src/main.c(900): warning:  #188-D: enumerated type mixed with another type
+    HAL_StatusTypeDef status = Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+../Core/Src/main.c(905): warning:  #188-D: enumerated type mixed with another type
+      SSD1306_Puts("Flash Read Error!", &Font_7x10, 1);
+../Core/Src/main.c(935): warning:  #188-D: enumerated type mixed with another type
+      SSD1306_Puts("PID PITCH", &Font_7x10, 1);
+../Core/Src/main.c(938): warning:  #188-D: enumerated type mixed with another type
+      SSD1306_Puts("PID SPEED", &Font_7x10, 1);
+../Core/Src/main.c(941): warning:  #188-D: enumerated type mixed with another type
+      SSD1306_Puts("PID POSITION", &Font_7x10, 1);
+../Core/Src/main.c(944): warning:  #188-D: enumerated type mixed with another type
+      SSD1306_Puts("PID YAW", &Font_7x10, 1);
+../Core/Src/main.c(952): warning:  #188-D: enumerated type mixed with another type
+      SSD1306_Puts("->", &Font_7x10, 1);
+../Core/Src/main.c(955): warning:  #188-D: enumerated type mixed with another type
+    SSD1306_Puts(str, &Font_7x10, 1);
+../Core/Src/main.c(960): warning:  #188-D: enumerated type mixed with another type
+      SSD1306_Puts("->", &Font_7x10, 1);
+../Core/Src/main.c(963): warning:  #188-D: enumerated type mixed with another type
+    SSD1306_Puts(str, &Font_7x10, 1);
+../Core/Src/main.c(968): warning:  #188-D: enumerated type mixed with another type
+      SSD1306_Puts("->", &Font_7x10, 1);
+../Core/Src/main.c(971): warning:  #188-D: enumerated type mixed with another type
+    SSD1306_Puts(str, &Font_7x10, 1);
+../Core/Src/main.c: 19 warnings, 0 errors
 linking...
-Program Size: Code=26092 RO-data=936 RW-data=368 ZI-data=8480  
+Program Size: Code=25380 RO-data=7944 RW-data=228 ZI-data=9468  
 FromELF: creating hex file...
-"XeCanBang\XeCanBang.axf" - 0 Error(s), 0 Warning(s).
+"XeCanBang\XeCanBang.axf" - 0 Error(s), 19 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -55,7 +94,7 @@ Package Vendor: Keil
 
    * Component: ARM::CMSIS:CORE:6.1.0
       Include file:  CMSIS\Core\Include\tz_context.h
-Build Time Elapsed:  00:00:01
+Build Time Elapsed:  00:00:02
 </pre>
 </body>
 </html>

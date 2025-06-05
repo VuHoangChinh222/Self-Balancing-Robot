@@ -1,7 +1,7 @@
 /*
 *************************
 *                       *
-* Ibrahim Cahit Özdemir *
+* Ibrahim Cahit ï¿½zdemir *
 *                       *
 *     October 2021      *
 *                       *
@@ -17,7 +17,8 @@
 #include "stm32f1xx_hal.h"
 
 // MPU6050 structure
-typedef struct {
+typedef struct
+{
 
     int16_t Accel_X_RAW;
     int16_t Accel_Y_RAW;
@@ -37,11 +38,12 @@ typedef struct {
 
     double KalmanAngleX;
     double KalmanAngleY;
+    double KalmanAngleZ;
 } MPU6050_t;
 
-
 // Kalman structure
-typedef struct {
+typedef struct
+{
     double Q_angle;
     double Q_bias;
     double R_measure;
@@ -49,7 +51,6 @@ typedef struct {
     double bias;
     double P[2][2];
 } Kalman_t;
-
 
 uint8_t MPU6050_Init(I2C_HandleTypeDef *I2Cx);
 

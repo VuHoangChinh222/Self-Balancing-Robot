@@ -22,12 +22,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "mpu6050.h"
-#include "uart_control.h"
 #include "math.h"
 #include "string.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "74165.h"
+#include "ssd1306.h"
+#include "pid.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +54,7 @@ I2C_HandleTypeDef hi2c1;
 TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -68,10 +70,10 @@ const osThreadAttr_t ReceiveUART_attributes = {
     .stack_size = 128 * 4,
     .priority = (osPriority_t)osPriorityNormal,
 };
-/* Definitions for SenCAN */
-osThreadId_t SenCANHandle;
-const osThreadAttr_t SenCAN_attributes = {
-    .name = "SenCAN",
+/* Definitions for SendCAN */
+osThreadId_t SendCANHandle;
+const osThreadAttr_t SendCAN_attributes = {
+    .name = "SendCAN",
     .stack_size = 128 * 4,
     .priority = (osPriority_t)osPriorityNormal,
 };
@@ -90,17 +92,20 @@ const osThreadAttr_t ReadMPU6050_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_USART3_UART_Init(void);
+static void MX_I2C1_Init(void);
 void StartDefaultTask(void *argument);
 void StartTask02(void *argument);
 void StartTask03(void *argument);
 void StartTask04(void *argument);
 
 /* USER CODE BEGIN PFP */
-void CAN_Send_Extended(float angle, int16_t x, int16_t y);
+void CAN_Send_Extended(int16_t x, int16_t y);
+void DisplayPIDMenu(uint8_t position);
+void DisplayPIDParams(uint8_t pidType, uint8_t position);
 //----------------------------------------------------------
 /* USER CODE END PFP */
 
@@ -114,14 +119,12 @@ typedef struct
 JoystickData_t joystickData = {0, 0};
 osMutexId_t joystickMutexHandle;
 #define UART_BUFFER_SIZE 32
-#define MPU_SAMPLE_RATE 5   // 200Hz
 #define CAN_SEND_INTERVAL 5 // Gửi mỗi 5ms
 #define CAN_RETRY_COUNT 3   // Số lần thử lại nếu gửi thất bại
-MPU6050_t MPU6050;
 // Biến nhận tín hiệu UART2
 typedef struct
 {
-  char buffer[50];
+  char buffer[64];
   uint8_t idx;
   uint32_t lastReceiveTime;
   uint8_t isNewData;
@@ -129,20 +132,37 @@ typedef struct
 uint8_t u8_RxData;
 // Khai báo là volatile vì được truy cập từ interrupt
 volatile UART_Buffer_t uartBuffer = {0};
-// Các biến liên quan đến cân bằng
-volatile float Ax = 0, Ay = 0;
 // CAN
 CAN_TxHeaderTypeDef TxHeader = {
     .StdId = 0x446,
     .RTR = CAN_RTR_DATA,
     .IDE = CAN_ID_STD,
-    .DLC = 4,
+    .DLC = 3,
     .TransmitGlobalTime = DISABLE};
 
-uint8_t TxData[4];
+uint8_t TxData[3];
 uint32_t TxMailbox;
 
 #define UART_TIMEOUT 2000
+
+// Khai bao cac bien cho IC 74165
+// Button
+uint8_t blackButtonData = 0;
+typedef enum
+{
+  BTN_SELECT = 0,   // Thay đổi từ 1 thành 0
+  BTN_UP = 1,       // Thay đổi từ 2 thành 1
+  BTN_DOWN = 2,     // Thay đổi từ 3 thành 2
+  BTN_SAVE = 3,     // Thay đổi từ 4 thành 3
+  BTN_EXIT = 4,     // Thay đổi từ 5 thành 4
+  BTN_ONPENMENU = 5 // Thay đổi từ 6 thành 5
+} TypeButtonBlack;
+volatile uint8_t blackButtonStates = 0; // Bien luu trang thai cac nut
+#define PID_MODE_SELECT 0               // Mode chọn loại PID
+#define PID_MODE_PARAMS 1               // Mode xem thông số PID
+#define PID_MODE_EDIT 2                 // Mode chỉnh sửa giá trị
+uint8_t pidMode = PID_MODE_SELECT;      // Mode hiện tại
+uint8_t paramPosition = 0;              // Vị trí trong menu thông số (0: P, 1: I, 2: D)
 /* USER CODE END 0 */
 
 /**
@@ -159,7 +179,6 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -175,19 +194,14 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_I2C1_Init();
   MX_USART2_UART_Init();
   MX_CAN_Init();
   MX_TIM2_Init();
+  MX_USART3_UART_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-
-  // Khởi tạo MPU6050
-  MPU6050_Init(&hi2c1);
-  HAL_Delay(100);
-
   HAL_TIM_Base_Start_IT(&htim2);
 
-  MPU6050_Read_All(&hi2c1, &MPU6050);
   HAL_UART_Receive_IT(&huart2, &u8_RxData, 1);
   //  HAL_UART_Receive_DMA(&huart2, &u8_RxData, 1);
 
@@ -200,6 +214,18 @@ int main(void)
     Error_Handler();
   }
 
+  PID_t position_pid = {1.0f, 0.0f, 0.0f};
+  PID_t speed_pid = {1.0f, 0.0f, 0.0f};
+  PID_t pitch_pid = {1.0f, 0.0f, 0.0f};
+  PID_t yaw_pid = {1.0f, 0.0f, 0.0f};
+  Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+
+  // Khoi tao IC74165 cho nhung nut nhan mau den
+  SSD1306_Init();
+  //  SSD1306_GotoXY(0, 0);
+  //  SSD1306_Puts("HELLO", &Font_11x18, 1);
+  //  SSD1306_UpdateScreen();
+  //  HAL_Delay(2000);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -233,8 +259,8 @@ int main(void)
   /* creation of ReceiveUART */
   ReceiveUARTHandle = osThreadNew(StartTask02, NULL, &ReceiveUART_attributes);
 
-  /* creation of SenCAN */
-  SenCANHandle = osThreadNew(StartTask03, NULL, &SenCAN_attributes);
+  /* creation of SendCAN */
+  SendCANHandle = osThreadNew(StartTask03, NULL, &SendCAN_attributes);
 
   /* creation of ReadMPU6050 */
   ReadMPU6050Handle = osThreadNew(StartTask04, NULL, &ReadMPU6050_attributes);
@@ -321,7 +347,7 @@ static void MX_CAN_Init(void)
   hcan.Init.Prescaler = 9;
   hcan.Init.Mode = CAN_MODE_NORMAL;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_6TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_2TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
   hcan.Init.AutoBusOff = ENABLE;
@@ -461,6 +487,38 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+ * @brief USART3 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+}
+
+/**
  * @brief GPIO Initialization Function
  * @param None
  * @retval None
@@ -480,12 +538,34 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, PIN_PL_Pin | PIN_CP_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PIN_PL_Pin PIN_CP_Pin */
+  GPIO_InitStruct.Pin = PIN_PL_Pin | PIN_CP_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PIN_Q7_Pin */
+  GPIO_InitStruct.Pin = PIN_Q7_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(PIN_Q7_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
   // Kích hoạt ngắt EXTI
@@ -523,38 +603,19 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   }
 }
 
-void CAN_Send_Extended(float angle, int16_t x, int16_t y)
+void CAN_Send_Extended(int16_t x, int16_t y)
 {
-  // Gửi góc nghiêng
-  TxHeader.StdId = 0x446;
-  TxHeader.DLC = 4;
-
-  TxData[0] = 12; // Command "S" for angle
-  TxData[1] = angle >= 0 ? 1 : 0;
-  angle = angle < 0 ? -angle : angle;
-  int16_t angle_int = (int16_t)(angle * 100);
-  TxData[2] = (angle_int >> 8) & 0xFF;
-  TxData[3] = angle_int & 0xFF;
-
-  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
-  {
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    Error_Handler();
-  }
-
-  osDelay(1); // Delay nhỏ giữa các lần gửi
   if (x <= 100 && x >= -100)
   {
     // Gửi giá trị X,Y
     TxHeader.StdId = 0x447;
-    TxHeader.DLC = 4;
+    TxHeader.DLC = 3;
 
     // Gửi X
-    TxData[0] = 22; // Command "X" for joystickX
-    TxData[1] = x > 0 ? 1 : 0;
+    TxData[0] = x > 0 ? 1 : 0;
     x = abs(x);
-    TxData[2] = (x >> 8) & 0xFF;
-    TxData[3] = x & 0xFF;
+    TxData[1] = (x >> 8) & 0xFF;
+    TxData[2] = x & 0xFF;
 
     if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
     {
@@ -567,12 +628,11 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
   if (y <= 100 && y >= -100)
   {
     TxHeader.StdId = 0x448;
-    TxHeader.DLC = 4;
-    TxData[0] = 32; // Command "Y" for joystickY
-    TxData[1] = y > 0 ? 1 : 0;
+    TxHeader.DLC = 3;
+    TxData[0] = y > 0 ? 1 : 0;
     y = abs(y);
-    TxData[2] = (y >> 8) & 0xFF;
-    TxData[3] = y & 0xFF;
+    TxData[1] = (y >> 8) & 0xFF;
+    TxData[2] = y & 0xFF;
 
     if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
     {
@@ -581,20 +641,6 @@ void CAN_Send_Extended(float angle, int16_t x, int16_t y)
     }
   }
   osDelay(1);
-  TxHeader.StdId = 0x449;
-  TxHeader.DLC = 4;
-  TxData[0] = 42;
-  float gyroY = MPU6050.Gy;
-  TxData[1] = gyroY >= 0 ? 1 : 0;
-  gyroY = gyroY < 0 ? -gyroY : gyroY;
-  int16_t gyroY_int = (int16_t)(gyroY * 100);
-  TxData[2] = (gyroY_int >> 8) & 0xFF;
-  TxData[3] = gyroY_int & 0xFF;
-  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
-  {
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    Error_Handler();
-  }
 }
 /* USER CODE END 4 */
 
@@ -611,7 +657,7 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for (;;)
   {
-    osDelay(1000);
+    osDelay(1);
   }
   /* USER CODE END 5 */
 }
@@ -667,6 +713,7 @@ void StartTask02(void *argument)
       joystickData.y = 0;
       osMutexRelease(joystickMutexHandle);
     }
+    CAN_Send_Extended(joystickData.x, joystickData.y);
     osDelay(1);
   }
   /* USER CODE END StartTask02 */
@@ -681,16 +728,250 @@ void StartTask02(void *argument)
 /* USER CODE END Header_StartTask03 */
 void StartTask03(void *argument)
 {
-  /* USER CODE BEGIN StartTask03 */
-  /* Infinite loop */
+  uint8_t prev_data = 0x3F;
+  uint8_t data_full;
+  uint8_t stable_count = 0;
+  uint8_t current_button;
+  uint8_t menuPosition = 0;
+  uint8_t menuState = 0;
+  char debugStr[50];
+
+  // Hiển thị mặt cười ban đầu
+  SSD1306_Clear();
+  SSD1306_GotoXY(40, 0);
+  SSD1306_Puts("^_^", &Font_16x26, 1);
+  SSD1306_UpdateScreen();
+
   for (;;)
   {
-    MPU6050_Read_All(&hi2c1, &MPU6050);
-    Ax = MPU6050.KalmanAngleX;
-    Ay = MPU6050.KalmanAngleY;
-    osDelay(MPU_SAMPLE_RATE);
+    data_full = Read_74165();
+    current_button = Get6Buttons(data_full);
+    if (current_button == blackButtonData)
+    {
+      stable_count++;
+      if (stable_count >= 3 && current_button != prev_data)
+      {
+        if (current_button == (~(1 << BTN_ONPENMENU) & 0x3F) && pidMode == PID_MODE_SELECT)
+        {
+          // Toggle menu state và reset các biến trạng thái
+          menuState = !menuState;
+          menuPosition = 0;          // Reset vị trí menu
+          pidMode = PID_MODE_SELECT; // Reset mode về trạng thái chọn PID
+          paramPosition = 0;         // Reset vị trí tham số
+
+          // Update display based on state
+          SSD1306_Clear();
+          if (menuState)
+          {
+            DisplayPIDMenu(menuPosition);
+          }
+          else
+          {
+            SSD1306_GotoXY(40, 0);
+            SSD1306_Puts("^_^", &Font_16x26, 1);
+          }
+          SSD1306_UpdateScreen();
+        }
+        else if (menuState)
+        {
+          if (current_button == (~(1 << BTN_SELECT) & 0x3F))
+          {
+            if (pidMode == PID_MODE_SELECT)
+            {
+              // Chuyển sang mode xem thông số
+              pidMode = PID_MODE_PARAMS;
+              paramPosition = 0;
+              SSD1306_Clear(); // Thêm dòng này
+              DisplayPIDParams(menuPosition, paramPosition);
+              SSD1306_UpdateScreen();
+            }
+            else if (pidMode == PID_MODE_PARAMS)
+            {
+              // Chuyển sang mode chỉnh sửa
+              pidMode = PID_MODE_EDIT;
+              SSD1306_Clear(); // Thêm dòng này
+              DisplayPIDParams(menuPosition, paramPosition);
+              SSD1306_UpdateScreen();
+            }
+          }
+          else if (current_button == (~(1 << BTN_UP) & 0x3F))
+          {
+            if (pidMode == PID_MODE_SELECT)
+            {
+              if (menuPosition > 0)
+              {
+                menuPosition--;
+                DisplayPIDMenu(menuPosition);
+                SSD1306_UpdateScreen(); // Thêm dòng này
+              }
+            }
+            else if (pidMode == PID_MODE_PARAMS)
+            {
+              if (paramPosition > 0)
+              {
+                paramPosition--;
+                DisplayPIDParams(menuPosition, paramPosition);
+                SSD1306_UpdateScreen(); // Thêm dòng này
+              }
+            }
+          }
+          else if (current_button == (~(1 << BTN_DOWN) & 0x3F))
+          {
+            if (pidMode == PID_MODE_SELECT)
+            {
+              if (menuPosition < 3)
+              {
+                menuPosition++;
+                DisplayPIDMenu(menuPosition);
+                SSD1306_UpdateScreen(); // Thêm dòng này
+              }
+            }
+            else if (pidMode == PID_MODE_PARAMS)
+            {
+              if (paramPosition < 2)
+              {
+                paramPosition++;
+                DisplayPIDParams(menuPosition, paramPosition);
+                SSD1306_UpdateScreen(); // Thêm dòng này
+              }
+            }
+          }
+          else if (current_button == (~(1 << BTN_EXIT) & 0x3F))
+          {
+            if (pidMode == PID_MODE_PARAMS)
+            {
+              // Quay lại menu chọn loại PID
+              pidMode = PID_MODE_SELECT;
+              DisplayPIDMenu(menuPosition);
+            }
+          }
+          SSD1306_UpdateScreen();
+        }
+        prev_data = current_button;
+      }
+    }
+    else
+    {
+      stable_count = 0;
+      blackButtonData = current_button;
+    }
+
+    osDelay(20);
   }
-  /* USER CODE END StartTask03 */
+}
+// Hiển thị menu PID
+void DisplayPIDMenu(uint8_t position)
+{
+  SSD1306_Clear();
+
+  // Hiển thị các mục menu - sử dụng mảng char thay vì const char
+  char menu_items[4][15] = {
+      "PID_Pitch",
+      "PID_Speed",
+      "PID_Position",
+      "PID_Yaw"};
+
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    SSD1306_GotoXY(0, i * 12);
+    if (i == position)
+    {
+      SSD1306_Puts("->", &Font_7x10, 1);
+      SSD1306_GotoXY(15, i * 12);
+    }
+    else
+    {
+      SSD1306_GotoXY(15, i * 12);
+    }
+    SSD1306_Puts(menu_items[i], &Font_7x10, 1);
+  }
+}
+
+void DisplayPIDParams(uint8_t pidType, uint8_t position)
+{
+  char str[50];
+  PID_t position_pid = {0};
+  PID_t speed_pid = {0};
+  PID_t pitch_pid = {0};
+  PID_t yaw_pid = {0};
+  PID_t *currentPID = NULL;
+
+  // Đọc tất cả giá trị PID từ Flash
+  HAL_StatusTypeDef status = Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+  if (status != HAL_OK)
+  {
+    SSD1306_Clear();
+    SSD1306_GotoXY(0, 0);
+    SSD1306_Puts("Flash Read Error!", &Font_7x10, 1);
+    SSD1306_UpdateScreen();
+    return;
+  }
+
+  // Chọn bộ PID cần hiển thị dựa vào pidType
+  switch (pidType)
+  {
+  case 0:
+    currentPID = &pitch_pid;
+    break;
+  case 1:
+    currentPID = &speed_pid;
+    break;
+  case 2:
+    currentPID = &position_pid;
+    break;
+  case 3:
+    currentPID = &yaw_pid;
+    break;
+  default:
+    currentPID = &pitch_pid;
+    break;
+  }
+
+  // Hiển thị tiêu đề
+  SSD1306_GotoXY(0, 0);
+  switch (pidType)
+  {
+  case 0:
+    SSD1306_Puts("PID PITCH", &Font_7x10, 1);
+    break;
+  case 1:
+    SSD1306_Puts("PID SPEED", &Font_7x10, 1);
+    break;
+  case 2:
+    SSD1306_Puts("PID POSITION", &Font_7x10, 1);
+    break;
+  case 3:
+    SSD1306_Puts("PID YAW", &Font_7x10, 1);
+    break;
+  }
+
+  // Hiển thị các thông số PID
+  // Hiển thị Kp
+  SSD1306_GotoXY(0, 12);
+  if (position == 0)
+    SSD1306_Puts("->", &Font_7x10, 1);
+  SSD1306_GotoXY(15, 12);
+  sprintf(str, "Kp = %.2f", currentPID->Kp);
+  SSD1306_Puts(str, &Font_7x10, 1);
+
+  // Hiển thị Ki
+  SSD1306_GotoXY(0, 24);
+  if (position == 1)
+    SSD1306_Puts("->", &Font_7x10, 1);
+  SSD1306_GotoXY(15, 24);
+  sprintf(str, "Ki = %.2f", currentPID->Ki);
+  SSD1306_Puts(str, &Font_7x10, 1);
+
+  // Hiển thị Kd
+  SSD1306_GotoXY(0, 36);
+  if (position == 2)
+    SSD1306_Puts("->", &Font_7x10, 1);
+  SSD1306_GotoXY(15, 36);
+  sprintf(str, "Kd = %.2f", currentPID->Kd);
+  SSD1306_Puts(str, &Font_7x10, 1);
+
+  SSD1306_UpdateScreen();
+  return;
 }
 
 /* USER CODE BEGIN Header_StartTask04 */
@@ -706,39 +987,9 @@ void StartTask04(void *argument)
   /* Infinite loop */
   for (;;)
   {
-    float currentAngle;
-    int16_t currentX=0, currentY=0;
-    // Get MPU6050 data
-    currentAngle = Ay;
-    // Get joystick data
-    currentX = joystickData.x;
-    currentY = joystickData.y;
-    CAN_Send_Extended(currentAngle, currentX, currentY);
     osDelay(1);
   }
   /* USER CODE END StartTask04 */
-}
-
-/**
- * @brief  Period elapsed callback in non blocking mode
- * @note   This function is called  when TIM3 interrupt took place, inside
- * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
- * a global variable "uwTick" used as application time base.
- * @param  htim : TIM handle
- * @retval None
- */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  /* USER CODE BEGIN Callback 0 */
-
-  /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM3)
-  {
-    HAL_IncTick();
-  }
-  /* USER CODE BEGIN Callback 1 */
-
-  /* USER CODE END Callback 1 */
 }
 
 /**

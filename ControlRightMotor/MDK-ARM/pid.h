@@ -13,5 +13,6 @@ typedef struct
 } PID_t;
 
 float PID_Compute(PID_t *pid, float setpoint, float measured, float dt);
+//float PID_ComputePitch(PID_t *pid, float setpoint, float measured, float gyroY, float dt);
 void PID_Reset(PID_t *pid); // Ham khoi tao lai PID
 #endif

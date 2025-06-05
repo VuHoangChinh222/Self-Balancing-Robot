@@ -25,9 +25,11 @@ controlleftmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_can.h
 controlleftmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h
 controlleftmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash.h
 controlleftmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
+controlleftmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 controlleftmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
 controlleftmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
 controlleftmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
+controlleftmotor\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h
 controlleftmotor\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h
 controlleftmotor\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h
 controlleftmotor\main.o: ../Core/Inc/FreeRTOSConfig.h
@@ -42,3 +44,6 @@ controlleftmotor\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V
 controlleftmotor\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 controlleftmotor\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 controlleftmotor\main.o: ../MDK-ARM/pid.h
+controlleftmotor\main.o: ../MDK-ARM/mpu6050.h
+controlleftmotor\main.o: ../MDK-ARM/flashStorage.h
+controlleftmotor\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h

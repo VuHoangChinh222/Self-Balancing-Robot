@@ -63,11 +63,11 @@ void Error_Handler(void);
 #define DIR_GPIO_Port GPIOA
 #define BREAK_Pin GPIO_PIN_10
 #define BREAK_GPIO_Port GPIOA
-#define HALL_U_Pin GPIO_PIN_6
-#define HALL_U_GPIO_Port GPIOB
-#define HALL_V_Pin GPIO_PIN_7
+#define HALL_U_Pin GPIO_PIN_15
+#define HALL_U_GPIO_Port GPIOA
+#define HALL_V_Pin GPIO_PIN_3
 #define HALL_V_GPIO_Port GPIOB
-#define HALL_W_Pin GPIO_PIN_8
+#define HALL_W_Pin GPIO_PIN_4
 #define HALL_W_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */

@@ -1,7 +1,7 @@
 #ifndef PID_H
 #define PID_H
 #define PID_INTEGRAL_LIMIT 500.0   // Gioi han tich phan
-#define PID_DERIVATIVE_LIMIT 200.0 // Gioi han dao ham
+#define PID_DERIVATIVE_LIMIT 250.0 // Gioi han dao ham
 typedef struct
 {
   float Kp;
@@ -13,5 +13,6 @@ typedef struct
 } PID_t;
 
 float PID_Compute(PID_t *pid, float setpoint, float measured, float dt);
+float PID_ComputePitch(PID_t *pid, float setpoint, float measured, float gyroY, float dt);
 void PID_Reset(PID_t *pid); // Ham khoi tao lai PID
 #endif
