@@ -227,7 +227,7 @@ int main(void)
   MX_I2C1_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-	MPU6050_Init(&hi2c1,2,2,0x03);
+  MPU6050_Init(&hi2c1, 2, 2, 0x03);
   HAL_Delay(100);
 
   // Bật chế độ Master (nếu dùng đọc từ HMC5883L qua MPU6050)
@@ -758,8 +758,8 @@ int float_to_str(float value, uint8_t *buffer)
 
 void send_imu_data(float ay, float az, float gy, float gz)
 {
-  static char uart_buffer[50]= "0"; // Static buffer to avoid stack issues
-  int len=0;
+  static char uart_buffer[50] = "0"; // Static buffer to avoid stack issues
+  int len = 0;
 
   // Format theo đúng mẫu "ay:12.345,az:23.456,gy:34.567,gz:45.678\n"
   len = sprintf(uart_buffer, "ay:%.3f,az:%.3f,gy:%.3f,gz:%.3f\n",

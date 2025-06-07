@@ -175,6 +175,11 @@
           <WinNumber>1</WinNumber>
           <ItemText>gyroZ,0x0A</ItemText>
         </Ww>
+        <Ww>
+          <count>5</count>
+          <WinNumber>1</WinNumber>
+          <ItemText>MPU6050</ItemText>
+        </Ww>
       </WatchWindow1>
       <Tracepoint>
         <THDelay>0</THDelay>
