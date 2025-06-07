@@ -1,7 +1,7 @@
 controlleftmotor\mpu6050.o: mpu6050.c
 controlleftmotor\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 controlleftmotor\mpu6050.o: mpu6050.h
-controlleftmotor\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+controlleftmotor\mpu6050.o: ../Core/Inc/main.h
 controlleftmotor\mpu6050.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h
 controlleftmotor\mpu6050.o: ../Core/Inc/stm32f1xx_hal_conf.h
 controlleftmotor\mpu6050.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc.h
@@ -9,6 +9,7 @@ controlleftmotor\mpu6050.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_de
 controlleftmotor\mpu6050.o: ../Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f1xx.h
 controlleftmotor\mpu6050.o: ../Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xb.h
 controlleftmotor\mpu6050.o: ../Drivers/CMSIS/Include/core_cm3.h
+controlleftmotor\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 controlleftmotor\mpu6050.o: ../Drivers/CMSIS/Include/cmsis_version.h
 controlleftmotor\mpu6050.o: ../Drivers/CMSIS/Include/cmsis_compiler.h
 controlleftmotor\mpu6050.o: ../Drivers/CMSIS/Include/cmsis_armcc.h

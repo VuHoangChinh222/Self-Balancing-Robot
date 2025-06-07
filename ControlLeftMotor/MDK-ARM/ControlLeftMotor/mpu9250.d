@@ -1,7 +1,8 @@
 controlleftmotor\mpu9250.o: mpu9250.c
-controlleftmotor\mpu9250.o: MPU9250.h
+controlleftmotor\mpu9250.o: mpu9250.h
 controlleftmotor\mpu9250.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 controlleftmotor\mpu9250.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+controlleftmotor\mpu9250.o: ../Core/Inc/main.h
 controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h
 controlleftmotor\mpu9250.o: ../Core/Inc/stm32f1xx_hal_conf.h
 controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc.h
@@ -26,8 +27,8 @@ controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_ca
 controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h
 controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash.h
 controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
+controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
-controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h
 controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
 controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
 controlleftmotor\mpu9250.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h

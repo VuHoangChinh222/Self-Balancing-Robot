@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "string.h"
@@ -83,8 +84,11 @@ const osThreadAttr_t TaskReadHall_attributes = {
 /* USER CODE BEGIN PV */
 
 //------------------------------------
-
-PID_t PID_Position, PID_SpeedRight, PID_Pitch, PID_Yaw;
+// PID
+PID_t position_pid = {0};
+PID_t speed_pid = {0};
+PID_t pitch_pid = {0};
+PID_t yaw_pid = {0};
 
 #define CONTROL_DT 0.001f // 1 ms
 #define MAX_SPEED_COMMAND 100.0f
@@ -121,10 +125,17 @@ volatile uint8_t v = 0;
 volatile uint8_t w = 0;
 uint8_t checkrunFirtTime = 0; // Bien kiem tra lan dau doc Hall sensor
 // CAN
-uint8_t RxData[3] = {0};
+uint8_t RxData[8] = {0};
 volatile int16_t joyStickX = 0, joyStickY = 0;
 CAN_RxHeaderTypeDef RxHeader;
 volatile char *command = "";
+// Flash danh dau PID da nhan du
+typedef struct
+{
+  uint8_t hasKpKi;
+  uint8_t hasKd;
+} PID_Receive_Flags_t;
+PID_Receive_Flags_t pidFlags[4] = {0}; // 0: pitch, 1: speed, 2: position, 3: yaw
 // UART
 #define RX_BUF_SIZE 128
 uint8_t rxBuffer[RX_BUF_SIZE];
@@ -170,6 +181,7 @@ float ClampPWM(float pwm);
 void ComputeMotorSpeed(void);
 void process_packet(uint8_t *data, uint16_t length);
 float custom_atof(const char *str);
+void TryWritePIDToFlashIfReady(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -211,13 +223,18 @@ int main(void)
   MX_TIM1_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  // Doc thong so PID tu bo nho flash
-  if (Flash_Read_PID(&PID_Position, &PID_SpeedRight, &PID_Pitch, &PID_Yaw) != HAL_OK)
-  {
-    // Nếu đọc lỗi, load giá trị mặc định
-    Flash_Load_Default_PID(&PID_Position, &PID_SpeedRight, &PID_Pitch, &PID_Yaw);
-  }
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+
+  // Doc thong so PID tu bo nho flash
+  if (Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid) != HAL_OK)
+  {
+    // Nếu chưa có dữ liệu hợp lệ thì dùng giá trị mặc định
+    Flash_Load_Default_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+
+    // Và ghi giá trị mặc định đó vào Flash
+    Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+  }
+
   // Bat yeu cau ngat khi du lieu CAN nhan ve duoc luu tru goi tin o FIFO1 khi dung ID
   if (HAL_CAN_Start(&hcan) != HAL_OK)
   {
@@ -570,6 +587,57 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
       rawjoyStickY = RxData[0] ? (((int16_t)RxData[1] << 8) | RxData[2]) : -(((int16_t)RxData[1] << 8) | RxData[2]);
       joyStickY = (rawjoyStickY > 100 || rawjoyStickY < -100) ? 0 : rawjoyStickY;
       break;
+    case 0x500: // Pitch Kp/Ki
+      memcpy(&pitch_pid.Kp, &RxData[0], sizeof(float));
+      memcpy(&pitch_pid.Ki, &RxData[4], sizeof(float));
+      pidFlags[0].hasKpKi = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x501: // Speed Kp/Ki
+      memcpy(&speed_pid.Kp, &RxData[0], sizeof(float));
+      memcpy(&speed_pid.Ki, &RxData[4], sizeof(float));
+      pidFlags[1].hasKpKi = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x502: // Position Kp/Ki
+      memcpy(&position_pid.Kp, &RxData[0], sizeof(float));
+      memcpy(&position_pid.Ki, &RxData[4], sizeof(float));
+      pidFlags[2].hasKpKi = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x503: // Yaw Kp/Ki
+      memcpy(&yaw_pid.Kp, &RxData[0], sizeof(float));
+      memcpy(&yaw_pid.Ki, &RxData[4], sizeof(float));
+      pidFlags[3].hasKpKi = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x510: // Pitch Kd
+      memcpy(&pitch_pid.Kd, &RxData[0], sizeof(float));
+      pidFlags[0].hasKd = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x511: // Speed Kd
+      memcpy(&speed_pid.Kd, &RxData[0], sizeof(float));
+      pidFlags[1].hasKd = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x512: // Position Kd
+      memcpy(&position_pid.Kd, &RxData[0], sizeof(float));
+      pidFlags[2].hasKd = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x513: // Yaw Kd
+      memcpy(&yaw_pid.Kd, &RxData[0], sizeof(float));
+      pidFlags[3].hasKd = 1;
+      TryWritePIDToFlashIfReady();
+      break;
     default:
       Error_Handler();
       break;
@@ -581,29 +649,80 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
   }
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+void TryWritePIDToFlashIfReady(void)
 {
-  if (huart->Instance == USART2)
+  for (int i = 0; i < 4; i++)
   {
-    // Tìm ký tự newline
-    for (uint16_t i = 0; i < RX_BUF_SIZE; i++)
-    {
-      if (rxBuffer[i] == '\n')
-      {
-        process_packet(rxBuffer, i);
+    if (!pidFlags[i].hasKpKi || !pidFlags[i].hasKd)
+      return; // chưa đủ dữ liệu
+  }
 
-        // Di chuyển dữ liệu còn lại lên đầu buffer
-        uint16_t remaining = RX_BUF_SIZE - i - 1;
-        memmove(rxBuffer, rxBuffer + i + 1, remaining);
-        rxIndex = remaining;
-        break;
-      }
-    }
+  // Đã nhận đủ Kp Ki Kd cho cả 4 bộ
+  Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
 
-    // Tiếp tục nhận
-    HAL_UART_Receive_DMA(&huart2, rxBuffer + rxIndex, RX_BUF_SIZE - rxIndex);
+  // Reset lại cờ
+  for (int i = 0; i < 4; i++)
+  {
+    pidFlags[i].hasKpKi = 0;
+    pidFlags[i].hasKd = 0;
   }
 }
+
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+//{
+//  if (huart->Instance == USART2)
+//  {
+//    for (uint16_t i = 0; i < RX_BUF_SIZE; i++)
+//    {
+//      if (rxBuffer[i] == '\n')
+//      {
+//        process_packet(rxBuffer, i);
+
+//        // Dời phần còn lại
+//        uint16_t remaining = RX_BUF_SIZE - i - 1;
+//        memmove(rxBuffer, rxBuffer + i + 1, remaining);
+//        rxIndex = remaining;
+
+//        // Khởi động lại DMA
+//        HAL_UART_Receive_DMA(&huart2, rxBuffer + rxIndex, RX_BUF_SIZE - rxIndex);
+//        return;
+//      }
+//    }
+
+//    // Nếu không tìm thấy '\n', giữ nguyên rxIndex
+//    // Khởi động lại DMA từ rxIndex
+//    if (rxIndex < RX_BUF_SIZE)
+//    {
+//      HAL_UART_Receive_DMA(&huart2, rxBuffer + rxIndex, RX_BUF_SIZE - rxIndex);
+//    }
+//  }
+//}
+
+//void USART2_IRQHandler(void)
+//{
+//  /* USER CODE BEGIN USART2_IRQn 0 */
+
+//  /* USER CODE END USART2_IRQn 0 */
+//  HAL_UART_IRQHandler(&huart2);
+//  /* USER CODE BEGIN USART2_IRQn 1 */
+//  if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_IDLE))
+//  {
+//    __HAL_UART_CLEAR_IDLEFLAG(&huart2);
+
+//    // Số byte đã nhận được = buffer size - số byte còn lại
+//    uint16_t len = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart2.hdmarx);
+
+//    // Ngắt DMA để xử lý
+//    HAL_UART_DMAStop(&huart2);
+
+//    // Gọi xử lý packet
+//    process_packet(rxBuffer, len);
+
+//    // Bắt đầu lại DMA
+//    HAL_UART_Receive_DMA(&huart2, rxBuffer, RX_BUF_SIZE);
+//  }
+//  /* USER CODE END USART2_IRQn 1 */
+//}
 
 float custom_atof(const char *str)
 {
@@ -649,37 +768,29 @@ float custom_atof(const char *str)
 
 void process_packet(uint8_t *data, uint16_t length)
 {
-  uint8_t temp = data[length];
-  data[length] = 0; // Tạm thời kết thúc chuỗi
+  // Đảm bảo kết thúc chuỗi
+  if (length >= RX_BUF_SIZE)
+    length = RX_BUF_SIZE - 1;
+  data[length] = '\0'; // NULL termination để dùng strtok
 
-  // Phân tích dữ liệu
   float ay = 0, az = 0, gy = 0, gz = 0;
   char *token = strtok((char *)data, ",");
 
   while (token)
   {
     if (strncmp(token, "ay:", 3) == 0)
-    {
       ay = custom_atof(token + 3);
-    }
     else if (strncmp(token, "az:", 3) == 0)
-    {
       az = custom_atof(token + 3);
-    }
     else if (strncmp(token, "gy:", 3) == 0)
-    {
       gy = custom_atof(token + 3);
-    }
     else if (strncmp(token, "gz:", 3) == 0)
-    {
       gz = custom_atof(token + 3);
-    }
+
     token = strtok(NULL, ",");
   }
 
-  data[length] = temp; // Khôi phục byte gốc
-
-  // Sử dụng dữ liệu ở đây
+  // Lưu giá trị hoặc xử lý tiếp
   angleY = ay;
   angleZ = az;
   gyroY = gy;
@@ -827,7 +938,7 @@ void controlLoop(void)
     {
       // Chế độ điều khiển tốc độ từ joystick
       float velocity_target = (joyStickY / 100.0f) * MAX_SPEED_COMMAND;
-      speed_cmd = PID_Compute(&PID_SpeedRight, velocity_target, currentSpeed, CONTROL_DT);
+      speed_cmd = PID_Compute(&speed_pid, velocity_target, currentSpeed, CONTROL_DT);
       isHolding = 0;
       isInitialized = 0;
     }
@@ -839,25 +950,25 @@ void controlLoop(void)
         initialPosition = hallCounter;
         isInitialized = 1;
         isHolding = 1;
-        PID_Reset(&PID_Position);
-        PID_Reset(&PID_SpeedRight);
+        PID_Reset(&position_pid);
+        PID_Reset(&speed_pid);
       }
 
       if (isHolding)
       {
         // PID vị trí -> tốc độ mong muốn
-        float position_cmd = PID_Compute(&PID_Position, initialPosition, hallCounter, CONTROL_DT);
+        float position_cmd = PID_Compute(&position_pid, initialPosition, hallCounter, CONTROL_DT);
         position_cmd = fminf(fmaxf(position_cmd, -30.0f), 30.0f);
 
         // PID tốc độ -> moment cần thiết
-        speed_cmd = PID_Compute(&PID_SpeedRight, position_cmd, currentSpeed, CONTROL_DT);
+        speed_cmd = PID_Compute(&speed_pid, position_cmd, currentSpeed, CONTROL_DT);
         speed_cmd = fminf(fmaxf(speed_cmd, -30.0f), 30.0f);
       }
     }
 
     // 2. Điều khiển cân bằng (tầng trong cùng)
-    float base_Kp = 24.0f;
-    float base_Kd = 0.8f;
+    float base_Kp = pitch_pid.Kp;
+    float base_Kd = pitch_pid.Kd;
     float Kp = base_Kp;
     float Kd = base_Kd;
 

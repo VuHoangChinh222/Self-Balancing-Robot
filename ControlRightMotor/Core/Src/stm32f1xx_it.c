@@ -237,7 +237,22 @@ void USART2_IRQHandler(void)
   /* USER CODE END USART2_IRQn 0 */
   HAL_UART_IRQHandler(&huart2);
   /* USER CODE BEGIN USART2_IRQn 1 */
+    if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_IDLE))
+    {
+        __HAL_UART_CLEAR_IDLEFLAG(&huart2);
 
+        // Tính s? byte dã nh?n du?c
+        uint16_t len = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart2.hdmarx);
+
+        // T?m d?ng DMA d? x? lý
+        HAL_UART_DMAStop(&huart2);
+
+        // X? lý packet
+        process_packet(rxBuffer, len);
+
+        // B?t d?u l?i DMA
+        HAL_UART_Receive_DMA(&huart2, rxBuffer, RX_BUF_SIZE);
+    }
   /* USER CODE END USART2_IRQn 1 */
 }
 

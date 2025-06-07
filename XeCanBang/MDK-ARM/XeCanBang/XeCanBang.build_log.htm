@@ -28,49 +28,51 @@ Project File Date:  06/06/2025
 *** Using Compiler 'V5.06 update 6 (build 750)', folder: 'D:\Keil_v5\ARM\ARMCC\Bin'
 Build target 'XeCanBang'
 compiling main.c...
-../Core/Src/main.c(221): warning:  #223-D: function "Flash_Write_PID" declared implicitly
-    Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
-../Core/Src/main.c(742): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(223): warning:  #223-D: function "Flash_Read_PID" declared implicitly
+    if (Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid) != HAL_OK)
+../Core/Src/main.c(226): warning:  #223-D: function "Flash_Load_Default_PID" declared implicitly
+      Flash_Load_Default_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+../Core/Src/main.c(229): warning:  #223-D: function "Flash_Write_PID" declared implicitly
+      Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+../Core/Src/main.c(797): warning:  #188-D: enumerated type mixed with another type
     SSD1306_Puts("^_^", &Font_16x26, 1);
-../Core/Src/main.c(771): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(826): warning:  #188-D: enumerated type mixed with another type
               SSD1306_Puts("^_^", &Font_16x26, 1);
-../Core/Src/main.c(737): warning:  #177-D: variable "debugStr"  was declared but never referenced
-    char debugStr[50];
-../Core/Src/main.c(879): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(960): warning:  #223-D: function "Flash_Write_PID" declared implicitly
+              if (Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid) == HAL_OK)
+../Core/Src/main.c(969): warning:  #188-D: enumerated type mixed with another type
+                SSD1306_Puts("SAVE FAILED!", &Font_7x10, 1);
+../Core/Src/main.c(1019): warning:  #188-D: enumerated type mixed with another type
         SSD1306_Puts("->", &Font_7x10, 1);
-../Core/Src/main.c(886): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1026): warning:  #188-D: enumerated type mixed with another type
       SSD1306_Puts(menu_items[i], &Font_7x10, 1);
-../Core/Src/main.c(900): warning:  #223-D: function "Flash_Read_PID" declared implicitly
-    HAL_StatusTypeDef status = Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
-../Core/Src/main.c(900): warning:  #188-D: enumerated type mixed with another type
-    HAL_StatusTypeDef status = Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
-../Core/Src/main.c(905): warning:  #188-D: enumerated type mixed with another type
-      SSD1306_Puts("Flash Read Error!", &Font_7x10, 1);
-../Core/Src/main.c(935): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1059): warning:  #188-D: enumerated type mixed with another type
       SSD1306_Puts("PID PITCH", &Font_7x10, 1);
-../Core/Src/main.c(938): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1062): warning:  #188-D: enumerated type mixed with another type
       SSD1306_Puts("PID SPEED", &Font_7x10, 1);
-../Core/Src/main.c(941): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1065): warning:  #188-D: enumerated type mixed with another type
       SSD1306_Puts("PID POSITION", &Font_7x10, 1);
-../Core/Src/main.c(944): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1068): warning:  #188-D: enumerated type mixed with another type
       SSD1306_Puts("PID YAW", &Font_7x10, 1);
-../Core/Src/main.c(952): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1075): warning:  #188-D: enumerated type mixed with another type
       SSD1306_Puts("->", &Font_7x10, 1);
-../Core/Src/main.c(955): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1078): warning:  #188-D: enumerated type mixed with another type
     SSD1306_Puts(str, &Font_7x10, 1);
-../Core/Src/main.c(960): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1083): warning:  #188-D: enumerated type mixed with another type
       SSD1306_Puts("->", &Font_7x10, 1);
-../Core/Src/main.c(963): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1086): warning:  #188-D: enumerated type mixed with another type
     SSD1306_Puts(str, &Font_7x10, 1);
-../Core/Src/main.c(968): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1091): warning:  #188-D: enumerated type mixed with another type
       SSD1306_Puts("->", &Font_7x10, 1);
-../Core/Src/main.c(971): warning:  #188-D: enumerated type mixed with another type
+../Core/Src/main.c(1094): warning:  #188-D: enumerated type mixed with another type
     SSD1306_Puts(str, &Font_7x10, 1);
-../Core/Src/main.c: 19 warnings, 0 errors
+../Core/Src/main.c(1101): warning:  #188-D: enumerated type mixed with another type
+    SSD1306_Puts("PID SAVED!", &Font_11x18, 1);
+../Core/Src/main.c: 20 warnings, 0 errors
 linking...
-Program Size: Code=25380 RO-data=7944 RW-data=228 ZI-data=9468  
+Program Size: Code=26292 RO-data=11284 RW-data=236 ZI-data=9564  
 FromELF: creating hex file...
-"XeCanBang\XeCanBang.axf" - 0 Error(s), 19 Warning(s).
+"XeCanBang\XeCanBang.axf" - 0 Error(s), 20 Warning(s).
 
 <h2>Software Packages used:</h2>
 

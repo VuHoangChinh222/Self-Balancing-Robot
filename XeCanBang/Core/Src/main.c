@@ -104,8 +104,10 @@ void StartTask04(void *argument);
 
 /* USER CODE BEGIN PFP */
 void CAN_Send_Extended(int16_t x, int16_t y);
+void SendAllPIDViaCAN(void);
 void DisplayPIDMenu(uint8_t position);
 void DisplayPIDParams(uint8_t pidType, uint8_t position);
+void DisplayFlashSaveSuccess(void);
 //----------------------------------------------------------
 /* USER CODE END PFP */
 
@@ -147,15 +149,15 @@ uint32_t TxMailbox;
 
 // Khai bao cac bien cho IC 74165
 // Button
-uint8_t blackButtonData = 0;
+uint8_t blackButtonData = 0x3F;
 typedef enum
 {
-  BTN_SELECT = 0,   // Thay đổi từ 1 thành 0
-  BTN_UP = 1,       // Thay đổi từ 2 thành 1
-  BTN_DOWN = 2,     // Thay đổi từ 3 thành 2
-  BTN_SAVE = 3,     // Thay đổi từ 4 thành 3
-  BTN_EXIT = 4,     // Thay đổi từ 5 thành 4
-  BTN_ONPENMENU = 5 // Thay đổi từ 6 thành 5
+  BTN_SELECT = 0,
+  BTN_UP = 1,
+  BTN_DOWN = 2,
+  BTN_SAVE = 3,
+  BTN_EXIT = 4,
+  BTN_OPENMENU = 5
 } TypeButtonBlack;
 volatile uint8_t blackButtonStates = 0; // Bien luu trang thai cac nut
 #define PID_MODE_SELECT 0               // Mode chọn loại PID
@@ -163,6 +165,10 @@ volatile uint8_t blackButtonStates = 0; // Bien luu trang thai cac nut
 #define PID_MODE_EDIT 2                 // Mode chỉnh sửa giá trị
 uint8_t pidMode = PID_MODE_SELECT;      // Mode hiện tại
 uint8_t paramPosition = 0;              // Vị trí trong menu thông số (0: P, 1: I, 2: D)
+PID_t position_pid = {0};
+PID_t speed_pid = {0};
+PID_t pitch_pid = {0};
+PID_t yaw_pid = {0};
 /* USER CODE END 0 */
 
 /**
@@ -214,18 +220,22 @@ int main(void)
     Error_Handler();
   }
 
-  PID_t position_pid = {1.0f, 0.0f, 0.0f};
-  PID_t speed_pid = {1.0f, 0.0f, 0.0f};
-  PID_t pitch_pid = {1.0f, 0.0f, 0.0f};
-  PID_t yaw_pid = {1.0f, 0.0f, 0.0f};
-  Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+  if (Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid) != HAL_OK)
+  {
+    // Nếu chưa có dữ liệu hợp lệ thì dùng giá trị mặc định
+    Flash_Load_Default_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+
+    // Và ghi giá trị mặc định đó vào Flash
+    Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+    SendAllPIDViaCAN();
+  }
+  else
+  {
+    SendAllPIDViaCAN();
+  }
 
   // Khoi tao IC74165 cho nhung nut nhan mau den
   SSD1306_Init();
-  //  SSD1306_GotoXY(0, 0);
-  //  SSD1306_Puts("HELLO", &Font_11x18, 1);
-  //  SSD1306_UpdateScreen();
-  //  HAL_Delay(2000);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -642,6 +652,53 @@ void CAN_Send_Extended(int16_t x, int16_t y)
   }
   osDelay(1);
 }
+
+void SendAllPIDViaCAN(void)
+{
+  PID_t *pidList[4] = {&pitch_pid, &speed_pid, &position_pid, &yaw_pid};
+  uint16_t baseCanID = 0x500; // bạn có thể tùy chỉnh ID base này
+
+  for (int i = 0; i < 4; i++)
+  {
+    uint16_t canID = baseCanID + i; // Mỗi PID có 1 ID riêng
+    float Kp = pidList[i]->Kp;
+    float Ki = pidList[i]->Ki;
+    float Kd = pidList[i]->Kd;
+
+    // Gửi từng thông số PID (dạng float 4 byte)
+    uint8_t data[8];
+    memcpy(&data[0], &Kp, sizeof(float));
+    memcpy(&data[4], &Ki, sizeof(float));
+
+    CAN_TxHeaderTypeDef header;
+    header.StdId = canID; // Ví dụ: 0x500 (Pitch), 0x501 (Speed), ...
+    header.RTR = CAN_RTR_DATA;
+    header.IDE = CAN_ID_STD;
+    header.DLC = 8; // 2 float: Kp, Ki
+    header.TransmitGlobalTime = DISABLE;
+    uint32_t mailbox;
+    if (HAL_CAN_AddTxMessage(&hcan, &header, data, &mailbox) != HAL_OK)
+    {
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+      Error_Handler();
+    }
+
+    HAL_Delay(2);
+
+    // Gửi tiếp Kd (vì không đủ 3 float trong 8 byte)
+    memcpy(&data[0], &Kd, sizeof(float));
+    memset(&data[4], 0, 4); // phần sau không cần thiết, để 0
+
+    header.StdId = canID + 0x10; // gửi Kd bằng ID kế tiếp (ví dụ 0x510, 0x511, ...)
+
+    if (HAL_CAN_AddTxMessage(&hcan, &header, data, &mailbox) != HAL_OK)
+    {
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+      Error_Handler();
+    }
+    HAL_Delay(2);
+  }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -734,9 +791,7 @@ void StartTask03(void *argument)
   uint8_t current_button;
   uint8_t menuPosition = 0;
   uint8_t menuState = 0;
-  char debugStr[50];
 
-  // Hiển thị mặt cười ban đầu
   SSD1306_Clear();
   SSD1306_GotoXY(40, 0);
   SSD1306_Puts("^_^", &Font_16x26, 1);
@@ -746,20 +801,20 @@ void StartTask03(void *argument)
   {
     data_full = Read_74165();
     current_button = Get6Buttons(data_full);
+
     if (current_button == blackButtonData)
     {
       stable_count++;
       if (stable_count >= 3 && current_button != prev_data)
       {
-        if (current_button == (~(1 << BTN_ONPENMENU) & 0x3F) && pidMode == PID_MODE_SELECT)
+        // Nút OPEN MENU
+        if (current_button == (~(1 << BTN_OPENMENU) & 0x3F))
         {
-          // Toggle menu state và reset các biến trạng thái
           menuState = !menuState;
-          menuPosition = 0;          // Reset vị trí menu
-          pidMode = PID_MODE_SELECT; // Reset mode về trạng thái chọn PID
-          paramPosition = 0;         // Reset vị trí tham số
+          menuPosition = 0;
+          pidMode = PID_MODE_SELECT;
+          paramPosition = 0;
 
-          // Update display based on state
           SSD1306_Clear();
           if (menuState)
           {
@@ -772,81 +827,165 @@ void StartTask03(void *argument)
           }
           SSD1306_UpdateScreen();
         }
+
+        // Các nút khác chỉ xử lý khi menu đang mở
         else if (menuState)
         {
+          // Lấy bộ PID tương ứng
+          PID_t *currentPID = NULL;
+          switch (menuPosition)
+          {
+          case 0:
+            currentPID = &pitch_pid;
+            break;
+          case 1:
+            currentPID = &speed_pid;
+            break;
+          case 2:
+            currentPID = &position_pid;
+            break;
+          case 3:
+            currentPID = &yaw_pid;
+            break;
+          }
+
+          // Nút SELECT
           if (current_button == (~(1 << BTN_SELECT) & 0x3F))
           {
             if (pidMode == PID_MODE_SELECT)
             {
-              // Chuyển sang mode xem thông số
               pidMode = PID_MODE_PARAMS;
               paramPosition = 0;
-              SSD1306_Clear(); // Thêm dòng này
+              SSD1306_Clear();
               DisplayPIDParams(menuPosition, paramPosition);
               SSD1306_UpdateScreen();
             }
             else if (pidMode == PID_MODE_PARAMS)
             {
-              // Chuyển sang mode chỉnh sửa
               pidMode = PID_MODE_EDIT;
-              SSD1306_Clear(); // Thêm dòng này
+              SSD1306_Clear();
               DisplayPIDParams(menuPosition, paramPosition);
               SSD1306_UpdateScreen();
             }
           }
+
+          // Nút UP
           else if (current_button == (~(1 << BTN_UP) & 0x3F))
           {
-            if (pidMode == PID_MODE_SELECT)
+            if (pidMode == PID_MODE_SELECT && menuPosition > 0)
             {
-              if (menuPosition > 0)
-              {
-                menuPosition--;
-                DisplayPIDMenu(menuPosition);
-                SSD1306_UpdateScreen(); // Thêm dòng này
-              }
+              menuPosition--;
+              SSD1306_Clear();
+              DisplayPIDMenu(menuPosition);
+              SSD1306_UpdateScreen();
             }
-            else if (pidMode == PID_MODE_PARAMS)
+            else if (pidMode == PID_MODE_PARAMS && paramPosition > 0)
             {
-              if (paramPosition > 0)
-              {
-                paramPosition--;
-                DisplayPIDParams(menuPosition, paramPosition);
-                SSD1306_UpdateScreen(); // Thêm dòng này
-              }
+              paramPosition--;
+              SSD1306_Clear();
+              DisplayPIDParams(menuPosition, paramPosition);
+              SSD1306_UpdateScreen();
+            }
+            else if (pidMode == PID_MODE_EDIT)
+            {
+              // Tăng giá trị
+              if (paramPosition == 0)
+                currentPID->Kp += 0.02f;
+              else if (paramPosition == 1)
+                currentPID->Ki += 0.02f;
+              else if (paramPosition == 2)
+                currentPID->Kd += 0.02f;
+
+              SSD1306_Clear();
+              DisplayPIDParams(menuPosition, paramPosition);
+              SSD1306_UpdateScreen();
             }
           }
+
+          // Nút DOWN
           else if (current_button == (~(1 << BTN_DOWN) & 0x3F))
           {
-            if (pidMode == PID_MODE_SELECT)
+
+            if (pidMode == PID_MODE_SELECT && menuPosition < 3)
             {
-              if (menuPosition < 3)
-              {
-                menuPosition++;
-                DisplayPIDMenu(menuPosition);
-                SSD1306_UpdateScreen(); // Thêm dòng này
-              }
+              menuPosition++;
+              SSD1306_Clear();
+              DisplayPIDMenu(menuPosition);
+              SSD1306_UpdateScreen();
             }
-            else if (pidMode == PID_MODE_PARAMS)
+            else if (pidMode == PID_MODE_PARAMS && paramPosition < 2)
             {
-              if (paramPosition < 2)
-              {
-                paramPosition++;
-                DisplayPIDParams(menuPosition, paramPosition);
-                SSD1306_UpdateScreen(); // Thêm dòng này
-              }
+              paramPosition++;
+              SSD1306_Clear();
+              DisplayPIDParams(menuPosition, paramPosition);
+              SSD1306_UpdateScreen();
+            }
+            else if (pidMode == PID_MODE_EDIT)
+            {
+              // Giảm giá trị (không dưới 0.00)
+              if (paramPosition == 0 && currentPID->Kp > 0.00f)
+                currentPID->Kp -= 0.01f;
+              else if (paramPosition == 1 && currentPID->Ki > 0.00f)
+                currentPID->Ki -= 0.01f;
+              else if (paramPosition == 2 && currentPID->Kd > 0.00f)
+                currentPID->Kd -= 0.01f;
+
+              SSD1306_Clear();
+              DisplayPIDParams(menuPosition, paramPosition);
+              SSD1306_UpdateScreen();
             }
           }
+          // Nút EXIT
           else if (current_button == (~(1 << BTN_EXIT) & 0x3F))
           {
             if (pidMode == PID_MODE_PARAMS)
             {
-              // Quay lại menu chọn loại PID
               pidMode = PID_MODE_SELECT;
+              SSD1306_Clear();
               DisplayPIDMenu(menuPosition);
+              SSD1306_UpdateScreen();
+            }
+            else if (pidMode == PID_MODE_EDIT)
+            {
+              pidMode = PID_MODE_PARAMS;
+              SSD1306_Clear();
+              DisplayPIDParams(menuPosition, paramPosition);
+              SSD1306_UpdateScreen();
             }
           }
-          SSD1306_UpdateScreen();
+
+          // Nút SAVE
+          else if (current_button == (~(1 << BTN_SAVE) & 0x3F))
+          {
+            if (Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid) == HAL_OK)
+            {
+              SendAllPIDViaCAN();
+              DisplayFlashSaveSuccess();
+            }
+            else
+            {
+              SSD1306_Clear();
+              SSD1306_GotoXY(0, 20);
+              SSD1306_Puts("SAVE FAILED!", &Font_7x10, 1);
+              SSD1306_UpdateScreen();
+              osDelay(1000);
+            }
+
+            if (pidMode == PID_MODE_EDIT || pidMode == PID_MODE_PARAMS)
+            {
+              SSD1306_Clear();
+              DisplayPIDParams(menuPosition, paramPosition);
+              SSD1306_UpdateScreen();
+            }
+            else
+            {
+              SSD1306_Clear();
+              DisplayPIDMenu(menuPosition);
+              SSD1306_UpdateScreen();
+            }
+          }
         }
+
         prev_data = current_button;
       }
     }
@@ -859,6 +998,7 @@ void StartTask03(void *argument)
     osDelay(20);
   }
 }
+
 // Hiển thị menu PID
 void DisplayPIDMenu(uint8_t position)
 {
@@ -890,24 +1030,9 @@ void DisplayPIDMenu(uint8_t position)
 void DisplayPIDParams(uint8_t pidType, uint8_t position)
 {
   char str[50];
-  PID_t position_pid = {0};
-  PID_t speed_pid = {0};
-  PID_t pitch_pid = {0};
-  PID_t yaw_pid = {0};
   PID_t *currentPID = NULL;
 
-  // Đọc tất cả giá trị PID từ Flash
-  HAL_StatusTypeDef status = Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
-  if (status != HAL_OK)
-  {
-    SSD1306_Clear();
-    SSD1306_GotoXY(0, 0);
-    SSD1306_Puts("Flash Read Error!", &Font_7x10, 1);
-    SSD1306_UpdateScreen();
-    return;
-  }
-
-  // Chọn bộ PID cần hiển thị dựa vào pidType
+  // Không đọc flash nữa!
   switch (pidType)
   {
   case 0:
@@ -927,7 +1052,6 @@ void DisplayPIDParams(uint8_t pidType, uint8_t position)
     break;
   }
 
-  // Hiển thị tiêu đề
   SSD1306_GotoXY(0, 0);
   switch (pidType)
   {
@@ -945,8 +1069,7 @@ void DisplayPIDParams(uint8_t pidType, uint8_t position)
     break;
   }
 
-  // Hiển thị các thông số PID
-  // Hiển thị Kp
+  // Kp
   SSD1306_GotoXY(0, 12);
   if (position == 0)
     SSD1306_Puts("->", &Font_7x10, 1);
@@ -954,7 +1077,7 @@ void DisplayPIDParams(uint8_t pidType, uint8_t position)
   sprintf(str, "Kp = %.2f", currentPID->Kp);
   SSD1306_Puts(str, &Font_7x10, 1);
 
-  // Hiển thị Ki
+  // Ki
   SSD1306_GotoXY(0, 24);
   if (position == 1)
     SSD1306_Puts("->", &Font_7x10, 1);
@@ -962,16 +1085,22 @@ void DisplayPIDParams(uint8_t pidType, uint8_t position)
   sprintf(str, "Ki = %.2f", currentPID->Ki);
   SSD1306_Puts(str, &Font_7x10, 1);
 
-  // Hiển thị Kd
+  // Kd
   SSD1306_GotoXY(0, 36);
   if (position == 2)
     SSD1306_Puts("->", &Font_7x10, 1);
   SSD1306_GotoXY(15, 36);
   sprintf(str, "Kd = %.2f", currentPID->Kd);
   SSD1306_Puts(str, &Font_7x10, 1);
+}
 
+void DisplayFlashSaveSuccess(void)
+{
+  SSD1306_Clear();
+  SSD1306_GotoXY(20, 16);
+  SSD1306_Puts("PID SAVED!", &Font_11x18, 1);
   SSD1306_UpdateScreen();
-  return;
+  osDelay(1000);
 }
 
 /* USER CODE BEGIN Header_StartTask04 */

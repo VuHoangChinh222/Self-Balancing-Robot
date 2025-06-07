@@ -121,7 +121,7 @@ void Flash_Load_Default_PID(PID_t *position, PID_t *speed, PID_t *pitch, PID_t *
     speed->Ki = 0.0f;
     speed->Kd = 0.0f;
 
-    pitch->Kp = 0.0f;
+    pitch->Kp = 6.0f;
     pitch->Ki = 0.0f;
     pitch->Kd = 0.0f;
 

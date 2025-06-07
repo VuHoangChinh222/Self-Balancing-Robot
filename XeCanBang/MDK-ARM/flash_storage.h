@@ -5,7 +5,7 @@
 #include "pid.h"
 
 // Định nghĩa địa chỉ lưu trong Flash
-#define FLASH_SECTOR_ADDRESS 0x0801FC00 // Sector cuối của Flash
+#define FLASH_SECTOR_ADDRESS 0x0800FC00 // Sector cuối của Flash
 #define FLASH_PAGE_SIZE_CUSTOM 0x400    // 1KB cho STM32F103
 
 // Cấu trúc lưu thông số PID

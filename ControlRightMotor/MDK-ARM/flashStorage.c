@@ -5,7 +5,7 @@ static uint32_t Calculate_Checksum(PIDSettings_t *settings)
 {
     uint32_t sum = 0;
     uint32_t *data = (uint32_t *)settings;
-    // T�nh t?ng t?t c? c�c gi� tr? tr? checksum
+    // Tính tổng tất cả các giá trị trừ checksum
     for (int i = 0; i < (sizeof(PIDSettings_t) / 4 - 1); i++)
     {
         sum += data[i];
@@ -20,7 +20,7 @@ HAL_StatusTypeDef Flash_Write_PID(PID_t *position, PID_t *speed, PID_t *pitch, P
     uint32_t PAGEError;
     PIDSettings_t settings;
 
-    // ��ng g�i d? li?u
+    // Đóng gói dữ liệu
     settings.position_kp = position->Kp;
     settings.position_ki = position->Ki;
     settings.position_kd = position->Kd;
@@ -34,13 +34,13 @@ HAL_StatusTypeDef Flash_Write_PID(PID_t *position, PID_t *speed, PID_t *pitch, P
     settings.yaw_ki = yaw->Ki;
     settings.yaw_kd = yaw->Kd;
 
-    // T�nh checksum
+    // Tính checksum
     settings.checksum = Calculate_Checksum(&settings);
 
-    // M? kh�a Flash
+    // Mở khóa Flash
     HAL_FLASH_Unlock();
 
-    // X�a sector
+    // Xóa sector
     EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
     EraseInitStruct.PageAddress = FLASH_SECTOR_ADDRESS;
     EraseInitStruct.NbPages = 1;
@@ -51,7 +51,7 @@ HAL_StatusTypeDef Flash_Write_PID(PID_t *position, PID_t *speed, PID_t *pitch, P
         return status;
     }
 
-    // Ghi d? li?u
+    // Ghi dữ liệu
     uint32_t *source = (uint32_t *)&settings;
     uint32_t address = FLASH_SECTOR_ADDRESS;
 
@@ -76,13 +76,13 @@ HAL_StatusTypeDef Flash_Read_PID(PID_t *position, PID_t *speed, PID_t *pitch, PI
     uint32_t *source = (uint32_t *)FLASH_SECTOR_ADDRESS;
     uint32_t *dest = (uint32_t *)&settings;
 
-    // �?c d? li?u t? Flash
+    // Đọc dữ liệu từ Flash
     for (uint32_t i = 0; i < sizeof(PIDSettings_t) / 4; i++)
     {
         dest[i] = source[i];
     }
 
-    // Ki?m tra checksum
+    // Kiểm tra checksum
     uint32_t calculated_checksum = Calculate_Checksum(&settings);
     if (calculated_checksum != settings.checksum)
     {
@@ -90,7 +90,7 @@ HAL_StatusTypeDef Flash_Read_PID(PID_t *position, PID_t *speed, PID_t *pitch, PI
         return HAL_ERROR;
     }
 
-    // C?p nh?t c�c gi� tr? PID
+    // Cập nhật các giá trị PID
     position->Kp = settings.position_kp;
     position->Ki = settings.position_ki;
     position->Kd = settings.position_kd;
@@ -112,7 +112,7 @@ HAL_StatusTypeDef Flash_Read_PID(PID_t *position, PID_t *speed, PID_t *pitch, PI
 
 void Flash_Load_Default_PID(PID_t *position, PID_t *speed, PID_t *pitch, PID_t *yaw)
 {
-    // Gi� tr? m?c d?nh cho c�c b? PID
+    // Giá trị mặc định cho các bộ PID
     position->Kp = 0.0f;
     position->Ki = 0.0f;
     position->Kd = 0.0f;
@@ -121,7 +121,7 @@ void Flash_Load_Default_PID(PID_t *position, PID_t *speed, PID_t *pitch, PID_t *
     speed->Ki = 0.0f;
     speed->Kd = 0.0f;
 
-    pitch->Kp = 0.0f;
+    pitch->Kp = 6.0f;
     pitch->Ki = 0.0f;
     pitch->Kd = 0.0f;
 

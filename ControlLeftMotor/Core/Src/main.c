@@ -94,7 +94,10 @@ volatile float angleZ = 0; // yaw
 volatile float gyroY = 0;  // Gy MPU6050 (don vi: deg/s)
 volatile float gyroZ = 0;  // Gz
 // PID
-PID_t PID_Position, PID_SpeedLeft, PID_Pitch, PID_Yaw;
+PID_t position_pid = {0};
+PID_t speed_pid = {0};
+PID_t pitch_pid = {0};
+PID_t yaw_pid = {0};
 
 #define CONTROL_DT 0.001f // 1 ms
 #define MAX_SPEED_COMMAND 100.0f
@@ -131,10 +134,17 @@ volatile uint8_t v = 0;
 volatile uint8_t w = 0;
 uint8_t checkrunFirtTime = 0; // Bien kiem tra lan dau doc Hall sensor
 // CAN
-uint8_t RxData[3] = {0};
+uint8_t RxData[8] = {0};
 volatile int16_t joyStickX = 0, joyStickY = 0;
 CAN_RxHeaderTypeDef RxHeader;
 volatile char *command = "";
+// Flash danh dau PID da nhan du
+typedef struct
+{
+  uint8_t hasKpKi;
+  uint8_t hasKd;
+} PID_Receive_Flags_t;
+PID_Receive_Flags_t pidFlags[4] = {0}; // 0: pitch, 1: speed, 2: position, 3: yaw
 // UART
 uint8_t txBuffer1[50], txBuffer2[50];
 volatile uint8_t activeBuffer = 0;
@@ -173,9 +183,9 @@ float SmoothPWM(float prev, float target);
 // ==== Clamp PWM Output ====
 float ClampPWM(float pwm);
 void ComputeMotorSpeed(void);
-void SavePIDSettings(void);
 int float_to_str(float value, uint8_t *buffer);
 void send_imu_data(float ay, float az, float gy, float gz);
+void TryWritePIDToFlashIfReady(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -217,16 +227,28 @@ int main(void)
   MX_I2C1_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  MPU6050_Init(&hi2c1);
+	MPU6050_Init(&hi2c1,2,2,0x03);
   HAL_Delay(100);
+
+  // Bật chế độ Master (nếu dùng đọc từ HMC5883L qua MPU6050)
+  MPU6050_Master(&hi2c1);
+
+  // Setup HMC5883L thông qua MPU6050 (MPU6050 làm master, HMC là slave)
+  HMC5883L_Setup(&hi2c1);
+
+  // Setup đọc dữ liệu từ HMC5883L qua MPU6050
+  MPU6050_Slave_Read(&hi2c1);
 
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 
   // Doc thong so PID tu bo nho flash
-  if (Flash_Read_PID(&PID_Position, &PID_SpeedLeft, &PID_Pitch, &PID_Yaw) != HAL_OK)
+  if (Flash_Read_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid) != HAL_OK)
   {
-    // Nếu đọc lỗi, load giá trị mặc định
-    Flash_Load_Default_PID(&PID_Position, &PID_SpeedLeft, &PID_Pitch, &PID_Yaw);
+    // Nếu chưa có dữ liệu hợp lệ thì dùng giá trị mặc định
+    Flash_Load_Default_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+
+    // Và ghi giá trị mặc định đó vào Flash
+    Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
   }
   // Bat yeu cau ngat khi du lieu CAN nhan ve duoc luu tru goi tin o FIFO1 khi dung ID
   if (HAL_CAN_Start(&hcan) != HAL_OK)
@@ -616,6 +638,57 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
       rawjoyStickY = RxData[0] ? (((int16_t)RxData[1] << 8) | RxData[2]) : -(((int16_t)RxData[1] << 8) | RxData[2]);
       joyStickY = (rawjoyStickY > 100 || rawjoyStickY < -100) ? 0 : rawjoyStickY;
       break;
+    case 0x500: // Pitch Kp/Ki
+      memcpy(&pitch_pid.Kp, &RxData[0], sizeof(float));
+      memcpy(&pitch_pid.Ki, &RxData[4], sizeof(float));
+      pidFlags[0].hasKpKi = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x501: // Speed Kp/Ki
+      memcpy(&speed_pid.Kp, &RxData[0], sizeof(float));
+      memcpy(&speed_pid.Ki, &RxData[4], sizeof(float));
+      pidFlags[1].hasKpKi = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x502: // Position Kp/Ki
+      memcpy(&position_pid.Kp, &RxData[0], sizeof(float));
+      memcpy(&position_pid.Ki, &RxData[4], sizeof(float));
+      pidFlags[2].hasKpKi = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x503: // Yaw Kp/Ki
+      memcpy(&yaw_pid.Kp, &RxData[0], sizeof(float));
+      memcpy(&yaw_pid.Ki, &RxData[4], sizeof(float));
+      pidFlags[3].hasKpKi = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x510: // Pitch Kd
+      memcpy(&pitch_pid.Kd, &RxData[0], sizeof(float));
+      pidFlags[0].hasKd = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x511: // Speed Kd
+      memcpy(&speed_pid.Kd, &RxData[0], sizeof(float));
+      pidFlags[1].hasKd = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x512: // Position Kd
+      memcpy(&position_pid.Kd, &RxData[0], sizeof(float));
+      pidFlags[2].hasKd = 1;
+      TryWritePIDToFlashIfReady();
+      break;
+
+    case 0x513: // Yaw Kd
+      memcpy(&yaw_pid.Kd, &RxData[0], sizeof(float));
+      pidFlags[3].hasKd = 1;
+      TryWritePIDToFlashIfReady();
+      break;
     default:
       Error_Handler();
       break;
@@ -624,6 +697,25 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
   else
   {
     Error_Handler();
+  }
+}
+
+void TryWritePIDToFlashIfReady(void)
+{
+  for (int i = 0; i < 4; i++)
+  {
+    if (!pidFlags[i].hasKpKi || !pidFlags[i].hasKd)
+      return; // chưa nhận đủ PID
+  }
+
+  // Đã đủ → ghi vào Flash
+  Flash_Write_PID(&position_pid, &speed_pid, &pitch_pid, &yaw_pid);
+
+  // Reset cờ
+  for (int i = 0; i < 4; i++)
+  {
+    pidFlags[i].hasKpKi = 0;
+    pidFlags[i].hasKd = 0;
   }
 }
 
@@ -666,8 +758,8 @@ int float_to_str(float value, uint8_t *buffer)
 
 void send_imu_data(float ay, float az, float gy, float gz)
 {
-  static char uart_buffer[50]; // Static buffer to avoid stack issues
-  int len;
+  static char uart_buffer[50]= "0"; // Static buffer to avoid stack issues
+  int len=0;
 
   // Format theo đúng mẫu "ay:12.345,az:23.456,gy:34.567,gz:45.678\n"
   len = sprintf(uart_buffer, "ay:%.3f,az:%.3f,gy:%.3f,gz:%.3f\n",
@@ -683,20 +775,6 @@ void send_imu_data(float ay, float az, float gy, float gz)
       HAL_UART_Transmit(&huart2, (uint8_t *)uart_buffer, len, 10);
     }
   }
-}
-
-void SavePIDSettings(void)
-{
-  // Tắt ngắt toàn cục trước khi ghi Flash
-  __disable_irq();
-
-  if (Flash_Write_PID(&PID_Position, &PID_SpeedLeft, &PID_Pitch, &PID_Yaw) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  // Bật lại ngắt
-  __enable_irq();
 }
 
 void updateMotors(float PWM)
@@ -839,7 +917,7 @@ void controlLoop(void)
     {
       // Chế độ điều khiển tốc độ từ joystick
       float velocity_target = (joyStickY / 100.0f) * MAX_SPEED_COMMAND;
-      speed_cmd = PID_Compute(&PID_SpeedLeft, velocity_target, currentSpeed, CONTROL_DT);
+      speed_cmd = PID_Compute(&speed_pid, velocity_target, currentSpeed, CONTROL_DT);
       isHolding = 0;
       isInitialized = 0;
     }
@@ -851,25 +929,27 @@ void controlLoop(void)
         initialPosition = hallCounter;
         isInitialized = 1;
         isHolding = 1;
-        PID_Reset(&PID_Position);
-        PID_Reset(&PID_SpeedLeft);
+        PID_Reset(&position_pid);
+        PID_Reset(&speed_pid);
       }
 
       if (isHolding)
       {
         // PID vị trí -> tốc độ mong muốn
-        float position_cmd = PID_Compute(&PID_Position, initialPosition, hallCounter, CONTROL_DT);
+        float position_cmd = PID_Compute(&position_pid, initialPosition, hallCounter, CONTROL_DT);
         position_cmd = fminf(fmaxf(position_cmd, -30.0f), 30.0f);
 
         // PID tốc độ -> moment cần thiết
-        speed_cmd = PID_Compute(&PID_SpeedLeft, position_cmd, currentSpeed, CONTROL_DT);
+        speed_cmd = PID_Compute(&speed_pid, position_cmd, currentSpeed, CONTROL_DT);
         speed_cmd = fminf(fmaxf(speed_cmd, -30.0f), 30.0f);
       }
     }
 
     // 2. Điều khiển cân bằng (tầng trong cùng)
-    float base_Kp = 24.0f;
-    float base_Kd = 0.8f;
+    //    float base_Kp = 24.0f;
+    //    float base_Kd = 0.8f;
+    float base_Kp = pitch_pid.Kp;
+    float base_Kd = pitch_pid.Kd;
     float Kp = base_Kp;
     float Kd = base_Kd;
 
@@ -969,8 +1049,9 @@ void ReceiveCAN(void *argument)
   for (;;)
   {
     MPU6050_Read_All(&hi2c1, &MPU6050);
-    angleY = MPU6050.KalmanAngleY;
-    angleZ = MPU6050.KalmanAngleZ;
+    MPU6050_Parsing(&MPU6050);
+    angleY = MPU6050.Pitch;
+    angleZ = MPU6050.Yaw;
     gyroY = MPU6050.Gy;
     gyroZ = MPU6050.Gz;
     send_imu_data(angleY, angleZ, gyroY, gyroZ);

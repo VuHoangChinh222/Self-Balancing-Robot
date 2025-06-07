@@ -32,8 +32,8 @@
 "controlleftmotor\heap_4.o"
 "controlleftmotor\port.o"
 "controlleftmotor\pid.o"
-"controlleftmotor\mpu6050.o"
 "controlleftmotor\flashstorage.o"
+"controlleftmotor\mpu6050.o"
 --strict --scatter "ControlLeftMotor\ControlLeftMotor.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
